@@ -36,6 +36,7 @@ var (
 	scanRetryDelay  = defaultRetryDelay
 	scanRetries     = defaultScanRetries
 	workerCount     = defaultWorkerCount
+	appStartedAt    time.Time
 )
 
 type Server struct {
@@ -66,6 +67,7 @@ func main() {
 	scanRetryDelay = envDurationMS("SCAN_RETRY_DELAY_MS", defaultRetryDelay)
 	scanRetries = envInt("SCAN_RETRIES", defaultScanRetries)
 	workerCount = envInt("SCAN_WORKERS", defaultWorkerCount)
+	appStartedAt = time.Now()
 
 	db, err := sql.Open("sqlite", connString)
 	if err != nil {
@@ -534,6 +536,8 @@ GROUP BY s.id`
 			if now.Sub(lastScanTime) < interval {
 				continue
 			}
+		} else if !appStartedAt.IsZero() && now.Sub(appStartedAt) < interval {
+			continue
 		}
 
 		active, err := hasActiveScan(ctx, db, candidate.serverID)
