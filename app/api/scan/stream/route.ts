@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
             error: scan.error
           });
 
-          if (scan.status === "done" || scan.status === "error") {
+          if (scan.status === "done" || scan.status === "error" || scan.status === "canceled") {
             closed = true;
             controller.close();
           }

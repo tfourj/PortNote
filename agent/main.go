@@ -129,11 +129,24 @@ func processScans(db *sql.DB) {
 			continue
 		}
 
-		openPorts := scanPorts(server.IP, totalPorts, func(scanned, open int) {
+		openPorts, canceled := scanPorts(server.IP, totalPorts, func(scanned, open int) bool {
 			if err := updateScanProgress(ctx, db, job.scanID, scanned, open); err != nil {
 				fmt.Printf("Error updating scan progress %d: %v\n", job.scanID, err)
 			}
+			isCanceled, err := isScanCanceled(ctx, db, job.scanID)
+			if err != nil {
+				fmt.Printf("Error checking scan cancel status %d: %v\n", job.scanID, err)
+				return false
+			}
+			return isCanceled
 		})
+
+		if canceled {
+			if err := markScanCanceled(ctx, db, job.scanID); err != nil {
+				fmt.Printf("Error marking scan %d as canceled: %v\n", job.scanID, err)
+			}
+			continue
+		}
 
 		if err := savePorts(db, server.ID, openPorts); err != nil {
 			fmt.Printf("Error saving ports: %v\n", err)
@@ -149,14 +162,24 @@ func processScans(db *sql.DB) {
 	}
 }
 
-func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)) []int {
+func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int) bool) ([]int, bool) {
 	ports := make(chan int, 10000)
 	results := make(chan int)
 	var openPorts []int
 	var wg sync.WaitGroup
 	var scanned atomic.Int64
 	var openCount atomic.Int64
+	var canceled atomic.Bool
+	cancelCh := make(chan struct{})
+	var cancelOnce sync.Once
 	done := make(chan struct{})
+
+	cancelScan := func() {
+		cancelOnce.Do(func() {
+			canceled.Store(true)
+			close(cancelCh)
+		})
+	}
 
 	if onProgress != nil {
 		go func() {
@@ -165,9 +188,15 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 			for {
 				select {
 				case <-ticker.C:
-					onProgress(int(scanned.Load()), int(openCount.Load()))
+					if onProgress(int(scanned.Load()), int(openCount.Load())) {
+						cancelScan()
+					}
 				case <-done:
-					onProgress(int(scanned.Load()), int(openCount.Load()))
+					if onProgress(int(scanned.Load()), int(openCount.Load())) {
+						cancelScan()
+					}
+					return
+				case <-cancelCh:
 					return
 				}
 			}
@@ -180,6 +209,9 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 		go func() {
 			defer wg.Done()
 			for port := range ports {
+				if canceled.Load() {
+					continue
+				}
 				conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), scanTimeout)
 				if err == nil {
 					conn.Close()
@@ -194,6 +226,9 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 	// Send ports to workers
 	go func() {
 		for port := 1; port <= totalPorts; port++ {
+			if canceled.Load() {
+				break
+			}
 			ports <- port
 		}
 		close(ports)
@@ -212,7 +247,7 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 	close(done)
 
 	sort.Ints(openPorts)
-	return openPorts
+	return openPorts, canceled.Load()
 }
 
 func savePorts(db *sql.DB, serverID int, ports []int) error {
@@ -288,6 +323,20 @@ func markScanDone(ctx context.Context, db *sql.DB, scanID int, totalPorts int, o
 func markScanError(ctx context.Context, db *sql.DB, scanID int, message string) error {
 	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET status = 'error', error = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, message, scanID)
 	return err
+}
+
+func markScanCanceled(ctx context.Context, db *sql.DB, scanID int) error {
+	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET status = 'canceled', "finishedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, scanID)
+	return err
+}
+
+func isScanCanceled(ctx context.Context, db *sql.DB, scanID int) (bool, error) {
+	var status string
+	err := db.QueryRowContext(ctx, `SELECT status FROM "Scan" WHERE id = ?`, scanID).Scan(&status)
+	if err != nil {
+		return false, err
+	}
+	return status == "canceled", nil
 }
 
 func envInt(name string, fallback int) int {

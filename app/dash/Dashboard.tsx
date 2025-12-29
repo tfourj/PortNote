@@ -10,7 +10,7 @@ import Cookies from "js-cookie";
 import { SortType, Server, Port } from "@/app/types";
 import { compareIp } from "@/app/utils";
 
-type ScanStatus = "queued" | "scanning" | "done" | "error" | "missing";
+type ScanStatus = "queued" | "scanning" | "done" | "error" | "missing" | "canceled";
 
 interface ScanProgress {
   scanId: number;
@@ -168,7 +168,7 @@ export default function Dashboard() {
       const payload = JSON.parse(event.data) as ScanProgress;
       setScanProgress(payload);
 
-      if (payload.status === "done") {
+      if (payload.status === "done" || payload.status === "canceled") {
         completed = true;
         fetchData().finally(() => {
           setActiveScanId(null);
@@ -354,6 +354,18 @@ export default function Dashboard() {
     handleScan(id);
   };
 
+  const handleCancelScan = async () => {
+    if (!activeScanId) {
+      return;
+    }
+
+    try {
+      await axios.post("/api/scan/cancel", { scanId: activeScanId });
+    } catch (error: any) {
+      handleError("Cancel failed: " + error.message);
+    }
+  };
+
   const resetForm = () => {
     setType(0);
     setServerName("");
@@ -406,6 +418,8 @@ const generateRandomPort = () => {
 
   const scanStatusLabel = scanProgress?.status === "done"
     ? "Scan complete"
+    : scanProgress?.status === "canceled"
+    ? "Scan canceled"
     : scanProgress?.status === "error"
     ? "Scan failed"
     : scanProgress?.status === "missing"
@@ -451,11 +465,19 @@ const generateRandomPort = () => {
             </div>
             <div className="modal-action">
               <button
-                className="btn"
-                onClick={() => setIsScanModalOpen(false)}
-                aria-label="Cancel scan dialog"
+                className="btn btn-error"
+                onClick={handleCancelScan}
+                aria-label="Cancel scan"
+                disabled={!isScanActive}
               >
                 Cancel
+              </button>
+              <button
+                className="btn"
+                onClick={() => setIsScanModalOpen(false)}
+                aria-label="Close scan dialog"
+              >
+                Close
               </button>
             </div>
           </div>
