@@ -10,6 +10,7 @@ interface UpdateRequest {
     name?: string;
     ip?: string;
     host?: number | null;
+    excludeFromScan?: boolean;
     note?: string | null;
     port?: number;
   };
@@ -26,7 +27,8 @@ export async function PUT(request: NextRequest) {
         data: {
           name: data.name,
           ip: data.ip,
-          host: data.host
+          host: data.host,
+          excludeFromScan: data.excludeFromScan
         }
       });
       return NextResponse.json(server);

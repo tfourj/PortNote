@@ -23,7 +23,11 @@ export async function GET() {
       settings = await prisma.settings.create({ data: DEFAULT_SETTINGS });
     }
 
-    const totalServers = await prisma.server.count();
+    const totalServers = await prisma.server.count({
+      where: {
+        excludeFromScan: false
+      }
+    });
     const activeScansCount = await prisma.scan.count({
       where: {
         status: {
@@ -43,6 +47,7 @@ export async function GET() {
           ON sc."serverId" = s.id
          AND sc.status = 'done'
          AND sc."finishedAt" IS NOT NULL
+        WHERE s."excludeFromScan" = 0
         GROUP BY s.id
         HAVING MAX(sc."finishedAt") >= ${threshold}
       ) t

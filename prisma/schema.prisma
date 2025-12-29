@@ -20,6 +20,7 @@ model Server {
   name      String
   ip        String
   host      Int?         
+  excludeFromScan Boolean @default(false)
 }
 
 model Port {

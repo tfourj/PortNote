@@ -509,6 +509,7 @@ func enqueuePeriodicScans(ctx context.Context, db *sql.DB, settings Settings) er
 SELECT s.id, MAX(CAST(strftime('%s', sc."finishedAt") AS INTEGER)) AS lastScanEpoch
 FROM "Server" s
 LEFT JOIN "Scan" sc ON sc."serverId" = s.id AND sc.status = 'done'
+WHERE s."excludeFromScan" = 0
 GROUP BY s.id`
 
 	rows, err := db.QueryContext(ctx, query)

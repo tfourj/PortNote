@@ -80,6 +80,7 @@ export default function Dashboard() {
   const [serverName, setServerName] = useState("");
   const [serverIP, setServerIP] = useState("");
   const [serverHost, setServerHost] = useState<number | null>(null);
+  const [excludeFromScan, setExcludeFromScan] = useState(false);
   const [portServer, setPortServer] = useState<number | null>(null);
   const [portNote, setPortNote] = useState("");
   const [portPort, setPortPort] = useState<number | null>(null);
@@ -393,7 +394,8 @@ export default function Dashboard() {
         type,
         serverName,
         serverIP,
-        serverHost: isVm ? serverHost : null
+        serverHost: isVm ? serverHost : null,
+        excludeFromScan
       } : {
         type,
         portServer,
@@ -429,7 +431,8 @@ export default function Dashboard() {
         data: {
           name: editItem.name,
           ip: editItem.ip,
-          host: editItem.host
+          host: editItem.host,
+          excludeFromScan: editItem.excludeFromScan ?? false
         }
       } : {
         type: 1,
@@ -519,6 +522,7 @@ export default function Dashboard() {
     setServerIP("");
     setIsVm(false);
     setServerHost(null);
+    setExcludeFromScan(false);
     setPortServer(null);
     setPortNote("");
     setPortPort(null);
@@ -538,6 +542,7 @@ export default function Dashboard() {
     setServerIP("");
     setIsVm(true);
     setServerHost(hostId);
+    setExcludeFromScan(false);
     (document.getElementById('add') as HTMLDialogElement)?.showModal();
   };
 
@@ -1100,6 +1105,15 @@ const generateRandomPort = () => {
                             onChange={(e) => setIsVm(e.target.checked)}
                         />
                       </label>
+                      <label className="label cursor-pointer">
+                        <span className="label-text">Exclude from periodic scans</span>
+                        <input
+                            type="checkbox"
+                            className="checkbox"
+                            checked={excludeFromScan}
+                            onChange={(e) => setExcludeFromScan(e.target.checked)}
+                        />
+                      </label>
                       {isVm && (
                           <select
                               className="select select-bordered w-full"
@@ -1219,6 +1233,18 @@ const generateRandomPort = () => {
                                       }
                                     }}
 
+                                />
+                              </label>
+                              <label className="label cursor-pointer">
+                                <span className="label-text">Exclude from periodic scans</span>
+                                <input
+                                    type="checkbox"
+                                    className="checkbox"
+                                    checked={!!editItem.excludeFromScan}
+                                    onChange={(e) => setEditItem({
+                                      ...editItem,
+                                      excludeFromScan: e.target.checked
+                                    })}
                                 />
                               </label>
                               {editItem.host !== null && (

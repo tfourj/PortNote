@@ -8,6 +8,7 @@ export interface Server {
     name: string;
     ip: string;
     host: number | null;
+    excludeFromScan?: boolean;
     ports: Port[];
 }
 

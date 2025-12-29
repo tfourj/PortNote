@@ -8,6 +8,7 @@ interface AddRequest {
     serverName: string;
     serverIP: string;
     serverHost: number;
+    excludeFromScan?: boolean;
     portServer: number;
     portNote: string;
     portPort: number;
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
                     name: serverName,
                     ip: serverIP,
                     host: serverHost,
+                    excludeFromScan: body.excludeFromScan ?? false
                 }
             });
             return NextResponse.json(server);

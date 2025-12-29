@@ -6,6 +6,9 @@ const prisma = new PrismaClient();
 export async function POST() {
   try {
     const servers = await prisma.server.findMany({
+      where: {
+        excludeFromScan: false
+      },
       select: { id: true }
     });
 
