@@ -281,6 +281,26 @@ export default function Dashboard() {
     return map;
   }, [filteredServers, sortType]);
 
+  const visibleServerIds = useMemo(
+    () => filteredServers.map((server) => server.id),
+    [filteredServers]
+  );
+
+  const allVisibleExpanded = useMemo(() => {
+    if (visibleServerIds.length === 0) {
+      return false;
+    }
+    return visibleServerIds.every((id) => expanded.has(id));
+  }, [visibleServerIds, expanded]);
+
+  const handleExpandAll = () => {
+    setExpanded(new Set(visibleServerIds));
+  };
+
+  const handleCollapseAll = () => {
+    setExpanded(new Set());
+  };
+
   const validateForm = () => {
     if (type === 0) {
       if (!serverName.trim() || !serverIP.trim()) {
@@ -1054,6 +1074,25 @@ const generateRandomPort = () => {
                 )}
               </div>
             </dialog>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2" aria-label="Server list controls">
+            <button
+              className="btn btn-sm"
+              onClick={handleExpandAll}
+              disabled={visibleServerIds.length === 0 || allVisibleExpanded}
+              aria-label="Expand all servers and VMs"
+            >
+              Expand all
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={handleCollapseAll}
+              disabled={expanded.size === 0}
+              aria-label="Collapse all servers and VMs"
+            >
+              Collapse all
+            </button>
           </div>
 
           {/* Server List */}
