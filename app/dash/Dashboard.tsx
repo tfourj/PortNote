@@ -1,8 +1,8 @@
 "use client";
 import Navbar from "@/components/Navbar";
 import ErrorToast from "@/components/Error";
-import { Edit, Plus, Trash, Dice5, Copy, ScanSearch, ChevronRight, Settings } from "lucide-react";
-import { useEffect, useState, useMemo } from "react";
+import { Edit, Plus, Trash, Dice5, Copy, ScanSearch, ChevronRight, Settings, ListChecks } from "lucide-react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import axios from "axios";
 import Fuse from "fuse.js";
 import Footer from "@/components/Footer"
@@ -23,7 +23,7 @@ interface ScanProgress {
 }
 
 interface ActiveScanResponse {
-  scan: {
+  scans: {
     id: number;
     serverId: number;
     status: ScanStatus;
@@ -31,7 +31,7 @@ interface ActiveScanResponse {
     totalPorts: number;
     openPorts: number;
     error?: string | null;
-  } | null;
+  }[];
 }
 
 interface SettingsResponse {
@@ -39,6 +39,9 @@ interface SettingsResponse {
   scanIntervalMinutes: number;
   scanConcurrency: number;
   lastScanAt?: string | null;
+  totalServers?: number;
+  scannedServers?: number;
+  activeScansCount?: number;
 }
 
 export default function Dashboard() {
@@ -75,14 +78,19 @@ export default function Dashboard() {
   const [randomPort, setRandomPort] = useState<number | null>(null);
   const [showRandomModal, setShowRandomModal] = useState(false);
 
-  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
-  const [activeScanId, setActiveScanId] = useState<number | null>(null);
-  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [isScanDetailOpen, setIsScanDetailOpen] = useState(false);
+  const [isAllScansOpen, setIsAllScansOpen] = useState(false);
+  const [selectedScanId, setSelectedScanId] = useState<number | null>(null);
+  const [activeScans, setActiveScans] = useState<ScanProgress[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [scanEnabledSetting, setScanEnabledSetting] = useState(true);
   const [scanIntervalMinutes, setScanIntervalMinutes] = useState(1440);
   const [scanConcurrency, setScanConcurrency] = useState(2);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
+  const [totalServersCount, setTotalServersCount] = useState(0);
+  const [scannedServersCount, setScannedServersCount] = useState(0);
+  const [activeScansCount, setActiveScansCount] = useState(0);
+  const activeScanIdsRef = useRef<Set<number>>(new Set());
 
 
   useEffect(() => {
@@ -141,6 +149,9 @@ export default function Dashboard() {
       setScanIntervalMinutes(response.data.scanIntervalMinutes);
       setScanConcurrency(response.data.scanConcurrency);
       setLastScanAt(response.data.lastScanAt ?? null);
+      setTotalServersCount(response.data.totalServers ?? 0);
+      setScannedServersCount(response.data.scannedServers ?? 0);
+      setActiveScansCount(response.data.activeScansCount ?? 0);
     } catch (error: any) {
       handleError("Failed to load settings: " + error.message);
     }
@@ -155,77 +166,67 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const loadActiveScan = async () => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const loadActiveScans = async () => {
       try {
         const response = await axios.get<ActiveScanResponse>("/api/scan/active");
-        const activeScan = response.data.scan;
-        if (!activeScan) {
+        if (cancelled) {
           return;
         }
-        if (activeScan.status !== "queued" && activeScan.status !== "scanning") {
-          return;
-        }
-        setScanProgress({
-          scanId: activeScan.id,
-          serverId: activeScan.serverId,
-          status: activeScan.status,
-          scannedPorts: activeScan.scannedPorts,
-          totalPorts: activeScan.totalPorts,
-          openPorts: activeScan.openPorts,
-          error: activeScan.error
+        const scans = response.data.scans || [];
+        const nextIds = new Set(scans.map((scan) => scan.id));
+        let endedScan = false;
+        const activeScanIds = activeScanIdsRef.current;
+
+        activeScanIds.forEach((id) => {
+          if (!nextIds.has(id)) {
+            endedScan = true;
+          }
         });
-        setActiveScanId(activeScan.id);
+
+        setActiveScans(
+          scans.map((scan) => ({
+            scanId: scan.id,
+            serverId: scan.serverId,
+            status: scan.status,
+            scannedPorts: scan.scannedPorts,
+            totalPorts: scan.totalPorts,
+            openPorts: scan.openPorts,
+            error: scan.error
+          }))
+        );
+        activeScanIdsRef.current = nextIds;
+
+        if (endedScan) {
+          fetchData();
+        }
+
+        if (selectedScanId && !nextIds.has(selectedScanId)) {
+          setIsScanDetailOpen(false);
+          setSelectedScanId(null);
+        }
       } catch (error: any) {
-        handleError("Failed to load scan status: " + error.message);
+        if (!cancelled) {
+          handleError("Failed to load scan status: " + error.message);
+        }
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(loadActiveScans, 2000);
+        }
       }
     };
 
-    loadActiveScan();
-  }, []);
-
-  useEffect(() => {
-    if (activeScanId === null) {
-      return;
-    }
-
-    let closed = false;
-    let completed = false;
-    const source = new EventSource(`/api/scan/stream?scanId=${activeScanId}`);
-
-    source.onmessage = (event) => {
-      const payload = JSON.parse(event.data) as ScanProgress;
-      setScanProgress(payload);
-
-      if (payload.status === "done" || payload.status === "canceled") {
-        completed = true;
-        fetchData().finally(() => {
-          setActiveScanId(null);
-        });
-      }
-
-      if (payload.status === "error" || payload.status === "missing") {
-        completed = true;
-        handleError(payload.error || "Scan failed");
-        setActiveScanId(null);
-      }
-    };
-
-    source.onerror = () => {
-      if (closed || completed) {
-        source.close();
-        return;
-      }
-      closed = true;
-      source.close();
-      handleError("Lost scan progress connection");
-      setActiveScanId(null);
-    };
+    loadActiveScans();
 
     return () => {
-      closed = true;
-      source.close();
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
     };
-  }, [activeScanId]);
+  }, [selectedScanId]);
 
   const handleError = (message: string) => {
     setError(message);
@@ -248,6 +249,7 @@ export default function Dashboard() {
   const handleRunPeriodicScan = async () => {
     try {
       await axios.post("/api/scan/run-periodic");
+      loadSettings();
     } catch (error: any) {
       handleError("Failed to queue scans: " + error.message);
     }
@@ -363,53 +365,65 @@ export default function Dashboard() {
     }
   };
 
-  const isScanActive = activeScanId !== null && (scanProgress?.status === "queued" || scanProgress?.status === "scanning");
-  const isScanActiveForServer = (id: number) =>
-    isScanActive && scanProgress?.serverId === id;
+  const activeScanByServerId = useMemo(() => {
+    const map = new Map<number, ScanProgress>();
+    activeScans.forEach((scan) => {
+      if (scan.status === "queued" || scan.status === "scanning") {
+        map.set(scan.serverId, scan);
+      }
+    });
+    return map;
+  }, [activeScans]);
+
+  const isScanActive = activeScans.length > 0;
+  const isScanActiveForServer = (id: number) => activeScanByServerId.has(id);
 
   const handleScan = async (id: number) => {
     try {
-      setIsScanModalOpen(true);
-      setScanProgress({
-        scanId: 0,
-        serverId: id,
-        status: "queued",
-        scannedPorts: 0,
-        totalPorts: 65535,
-        openPorts: 0
-      });
+      setIsScanDetailOpen(true);
       const payload = { serverId: id };
       const response = await axios.post<{ scanId: number }>("/api/scan", payload);
-      setActiveScanId(response.data.scanId);
+      setSelectedScanId(response.data.scanId);
+      setActiveScans((prev) => {
+        const filtered = prev.filter((scan) => scan.serverId !== id);
+        return [
+          ...filtered,
+          {
+            scanId: response.data.scanId,
+            serverId: id,
+            status: "queued",
+            scannedPorts: 0,
+            totalPorts: 65535,
+            openPorts: 0
+          }
+        ];
+      });
     } catch (error: any) {
       handleError("Scan failed: " + error.message);
-      setIsScanModalOpen(false);
-      setActiveScanId(null);
-      setScanProgress(null);
+      setIsScanDetailOpen(false);
+      setSelectedScanId(null);
+      setActiveScans([]);
     }
   };
 
   const handleScanButtonClick = (id: number) => {
-    if (isScanActiveForServer(id)) {
-      setIsScanModalOpen(true);
-      return;
-    }
-
-    if (isScanActive && scanProgress?.serverId !== id) {
-      setIsScanModalOpen(true);
+    const activeScan = activeScanByServerId.get(id);
+    if (activeScan) {
+      setSelectedScanId(activeScan.scanId);
+      setIsScanDetailOpen(true);
       return;
     }
 
     handleScan(id);
   };
 
-  const handleCancelScan = async () => {
-    if (!activeScanId) {
+  const handleCancelScan = async (scanId: number) => {
+    if (!scanId) {
       return;
     }
 
     try {
-      await axios.post("/api/scan/cancel", { scanId: activeScanId });
+      await axios.post("/api/scan/cancel", { scanId });
     } catch (error: any) {
       handleError("Cancel failed: " + error.message);
     }
@@ -478,21 +492,40 @@ const generateRandomPort = () => {
   const sortedPorts = (ports: Port[]) => 
     [...ports].sort((a, b) => a.port - b.port);
 
-  const scanPercent = scanProgress?.totalPorts
-    ? Math.min(100, Math.round((scanProgress.scannedPorts / scanProgress.totalPorts) * 100))
-    : 0;
+  const getScanStatusLabel = (status?: ScanStatus) => {
+    switch (status) {
+      case "done":
+        return "Scan complete";
+      case "canceled":
+        return "Scan canceled";
+      case "error":
+        return "Scan failed";
+      case "missing":
+        return "Scan not found";
+      case "scanning":
+        return "Scanning ports...";
+      case "queued":
+        return "Queued for scan...";
+      default:
+        return "Scan status unknown";
+    }
+  };
 
-  const scanStatusLabel = scanProgress?.status === "done"
-    ? "Scan complete"
-    : scanProgress?.status === "canceled"
-    ? "Scan canceled"
-    : scanProgress?.status === "error"
-    ? "Scan failed"
-    : scanProgress?.status === "missing"
-    ? "Scan not found"
-    : scanProgress?.status === "scanning"
-    ? "Scanning ports..."
-    : "Queued for scan...";
+  const getServerName = (serverId: number) => {
+    const server = servers.find((item) => item.id === serverId);
+    return server ? server.name : `Server ${serverId}`;
+  };
+
+  const selectedScan = useMemo(() => {
+    if (!selectedScanId) {
+      return null;
+    }
+    return activeScans.find((scan) => scan.scanId === selectedScanId) ?? null;
+  }, [activeScans, selectedScanId]);
+
+  const selectedScanPercent = selectedScan?.totalPorts
+    ? Math.min(100, Math.round((selectedScan.scannedPorts / selectedScan.totalPorts) * 100))
+    : 0;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -502,45 +535,109 @@ const generateRandomPort = () => {
         show={showError}
         onClose={() => setShowError(false)}
       />
-{isScanModalOpen && (
-        <dialog className="modal modal-open" aria-labelledby="modal-title">
+{isScanDetailOpen && (
+        <dialog className="modal modal-open" aria-labelledby="scan-detail-title">
           <div className="modal-box">
-            <div className="flex flex-col items-center justify-center gap-4" id="modal-title">
-              {(scanProgress?.status === "queued" || scanProgress?.status === "scanning") && (
-                <span className="loading loading-spinner text-primary loading-lg"></span>
-              )}
-              <p className="text-center">{scanStatusLabel}</p>
-              {scanProgress?.status === "queued" || scanProgress?.status === "scanning" ? (
-                <p className="text-center text-xs opacity-70">You can close this window. The scan keeps running in the background.</p>
-              ) : null}
-              <div className="w-full space-y-2">
-                <progress className="progress progress-primary w-full" value={scanPercent} max="100"></progress>
-                <div className="flex justify-between text-xs opacity-70">
-                  <span>
-                    {(scanProgress?.scannedPorts ?? 0).toLocaleString()} / {(scanProgress?.totalPorts ?? 65535).toLocaleString()} ports scanned
-                  </span>
-                  <span>{scanPercent}%</span>
-                </div>
-                <div className="text-xs opacity-70">
-                  Open ports found: {(scanProgress?.openPorts ?? 0).toLocaleString()}
-                </div>
-              </div>
-              {scanProgress?.status === "error" && scanProgress.error && (
-                <p className="text-center text-error text-sm">{scanProgress.error}</p>
+            <div className="flex flex-col items-center justify-center gap-4" id="scan-detail-title">
+              {selectedScan ? (
+                <>
+                  {(selectedScan.status === "queued" || selectedScan.status === "scanning") && (
+                    <span className="loading loading-spinner text-primary loading-lg"></span>
+                  )}
+                  <p className="text-center">{getScanStatusLabel(selectedScan.status)}</p>
+                  {selectedScan.status === "queued" || selectedScan.status === "scanning" ? (
+                    <p className="text-center text-xs opacity-70">You can close this window. The scan keeps running in the background.</p>
+                  ) : null}
+                  <div className="w-full space-y-2">
+                    <progress className="progress progress-primary w-full" value={selectedScanPercent} max="100"></progress>
+                    <div className="flex justify-between text-xs opacity-70">
+                      <span>
+                        {selectedScan.scannedPorts.toLocaleString()} / {selectedScan.totalPorts.toLocaleString()} ports scanned
+                      </span>
+                      <span>{selectedScanPercent}%</span>
+                    </div>
+                    <div className="text-xs opacity-70">
+                      Open ports found: {selectedScan.openPorts.toLocaleString()}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-center text-sm">Scan is no longer active.</p>
               )}
             </div>
             <div className="modal-action">
-              <button
-                className="btn btn-error"
-                onClick={handleCancelScan}
-                aria-label="Cancel scan"
-                disabled={!isScanActive}
-              >
-                Cancel
-              </button>
+              {selectedScan && (selectedScan.status === "queued" || selectedScan.status === "scanning") && (
+                <button
+                  className="btn btn-error"
+                  onClick={() => handleCancelScan(selectedScan.scanId)}
+                  aria-label="Cancel scan"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 className="btn"
-                onClick={() => setIsScanModalOpen(false)}
+                onClick={() => {
+                  setIsScanDetailOpen(false);
+                  setSelectedScanId(null);
+                }}
+                aria-label="Close scan dialog"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
+{isAllScansOpen && (
+        <dialog className="modal modal-open" aria-labelledby="modal-title">
+          <div className="modal-box">
+            <div className="flex flex-col gap-4" id="modal-title">
+              <div className="flex items-center gap-2">
+                <span className="loading loading-spinner text-primary loading-md"></span>
+                <p className="text-sm opacity-70">Scans running in the background.</p>
+              </div>
+              <div className="space-y-3">
+                {activeScans.length === 0 ? (
+                  <p className="text-center text-sm">No active scans.</p>
+                ) : (
+                  activeScans.map((scan) => {
+                    const percent = scan.totalPorts
+                      ? Math.min(100, Math.round((scan.scannedPorts / scan.totalPorts) * 100))
+                      : 0;
+                    return (
+                      <div key={scan.scanId} className="rounded-lg border border-base-300 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium">{getServerName(scan.serverId)}</div>
+                          <span className="text-xs opacity-70">{getScanStatusLabel(scan.status)}</span>
+                        </div>
+                        <progress className="progress progress-primary w-full" value={percent} max="100"></progress>
+                        <div className="flex justify-between text-xs opacity-70">
+                          <span>
+                            {scan.scannedPorts.toLocaleString()} / {scan.totalPorts.toLocaleString()} ports scanned
+                          </span>
+                          <span>{percent}%</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs opacity-70">
+                          <span>Open ports found: {scan.openPorts.toLocaleString()}</span>
+                          <button
+                            className="btn btn-xs btn-error"
+                            onClick={() => handleCancelScan(scan.scanId)}
+                            aria-label={`Cancel scan for ${getServerName(scan.serverId)}`}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            <div className="modal-action">
+              <button
+                className="btn"
+                onClick={() => setIsAllScansOpen(false)}
                 aria-label="Close scan dialog"
               >
                 Close
@@ -591,6 +688,17 @@ const generateRandomPort = () => {
               </div>
               <div className="text-xs opacity-70">
                 Last scan: {lastScanAt ? new Date(lastScanAt).toLocaleString() : "Never"}
+              </div>
+              <div className="flex items-center gap-2 text-xs opacity-70">
+                {activeScansCount > 0 && (
+                  <span className="loading loading-spinner loading-xs"></span>
+                )}
+                <span>
+                  {activeScansCount > 0 ? "Periodic scans running" : "Periodic scans idle"}
+                </span>
+              </div>
+              <div className="text-xs opacity-70">
+                Scanned {scannedServersCount}/{totalServersCount} servers in the last interval
               </div>
               <p className="text-xs opacity-70">Periodic scans are queued and run in the background.</p>
             </div>
@@ -652,6 +760,14 @@ const generateRandomPort = () => {
                 aria-label="Open scan settings"
             >
               <Settings />
+            </button>
+            <button
+                className="btn btn-square"
+                onClick={() => setIsAllScansOpen(true)}
+                title="Active scans"
+                aria-label="View active scans"
+            >
+              <ListChecks />
             </button>
             {showRandomModal && randomPort !== null && (
                 <dialog open className="modal" aria-label="Random port generated">

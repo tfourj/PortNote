@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 export async function GET() {
   try {
-    const scan = await prisma.scan.findFirst({
+    const scans = await prisma.scan.findMany({
       where: {
         status: {
           in: ["queued", "scanning"]
@@ -18,7 +18,7 @@ export async function GET() {
       }
     });
 
-    return NextResponse.json({ scan });
+    return NextResponse.json({ scans });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

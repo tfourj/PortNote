@@ -23,6 +23,32 @@ export async function GET() {
       settings = await prisma.settings.create({ data: DEFAULT_SETTINGS });
     }
 
+    const totalServers = await prisma.server.count();
+    const activeScansCount = await prisma.scan.count({
+      where: {
+        status: {
+          in: ["queued", "scanning"]
+        }
+      }
+    });
+
+    const intervalMs = settings.scanIntervalMinutes * 60 * 1000;
+    const threshold = new Date(Date.now() - intervalMs).toISOString();
+    const scannedRows = await prisma.$queryRaw<{ count: number }[]>`
+      SELECT CAST(COUNT(*) as INTEGER) as count
+      FROM (
+        SELECT s.id
+        FROM "Server" s
+        LEFT JOIN "Scan" sc
+          ON sc."serverId" = s.id
+         AND sc.status = 'done'
+         AND sc."finishedAt" IS NOT NULL
+        GROUP BY s.id
+        HAVING MAX(sc."finishedAt") >= ${threshold}
+      ) t
+    `;
+    const scannedServers = Number(scannedRows?.[0]?.count ?? 0);
+
     const lastScan = await prisma.scan.findFirst({
       where: {
         status: "done",
@@ -37,7 +63,10 @@ export async function GET() {
 
     return NextResponse.json({
       ...settings,
-      lastScanAt: lastScan?.finishedAt ?? null
+      lastScanAt: lastScan?.finishedAt ?? null,
+      totalServers,
+      scannedServers,
+      activeScansCount
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
