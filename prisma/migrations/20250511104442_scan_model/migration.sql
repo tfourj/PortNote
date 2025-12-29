@@ -1,7 +1,5 @@
 -- CreateTable
 CREATE TABLE "Scan" (
-    "id" SERIAL NOT NULL,
-    "serverId" INTEGER NOT NULL,
-
-    CONSTRAINT "Scan_pkey" PRIMARY KEY ("id")
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "serverId" INTEGER NOT NULL
 );

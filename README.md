@@ -37,31 +37,19 @@ services:
       USER_SECRET: RANDOM_SECRET # Replace with a secure random string
       LOGIN_USERNAME: username # Replace with a username
       LOGIN_PASSWORD: mypassword # Replace with a custom password
-      DATABASE_URL: "postgresql://postgres:postgres@db:5432/postgres"
-    depends_on:
-      db:
-        condition: service_started
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - portnote_data:/data
 
   agent:
     image: haedlessdev/portnote-agent:latest
     environment:
-      DATABASE_URL: "postgresql://postgres:postgres@db:5432/postgres"
-    depends_on:
-      db:
-        condition: service_started
-
-  db:
-    image: postgres:17
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      DATABASE_URL: "file:/data/portnote.db"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - portnote_data:/data
 
 volumes:
-  postgres_data:
+  portnote_data:
 ```
 
 ## Tech Stack & Credits
@@ -69,7 +57,7 @@ volumes:
 The application is build with:
 - Next.js & Typescript
 - Tailwindcss with [daisyui](https://daisyui.com/)
-- PostgreSQL with [Prisma ORM](https://www.prisma.io/)
+- SQLite with [Prisma ORM](https://www.prisma.io/)
 - Icons by [Lucide](https://lucide.dev/)
 - and a lot of love ❤️
 

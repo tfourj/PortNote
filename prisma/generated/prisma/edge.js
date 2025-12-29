@@ -86,9 +86,6 @@ Prisma.NullTypes = {
  * Enums
  */
 exports.Prisma.TransactionIsolationLevel = makeStrictEnum({
-  ReadUncommitted: 'ReadUncommitted',
-  ReadCommitted: 'ReadCommitted',
-  RepeatableRead: 'RepeatableRead',
   Serializable: 'Serializable'
 });
 
@@ -116,11 +113,6 @@ exports.Prisma.SortOrder = {
   desc: 'desc'
 };
 
-exports.Prisma.QueryMode = {
-  default: 'default',
-  insensitive: 'insensitive'
-};
-
 exports.Prisma.NullsOrder = {
   first: 'first',
   last: 'last'
@@ -143,7 +135,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/home/damian/Schreibtisch/PortNote/prisma/generated/prisma",
+      "value": "/app/prisma/generated/prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -152,7 +144,7 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "rhel-openssl-3.0.x",
+        "value": "linux-musl-openssl-3.0.x",
         "native": true
       },
       {
@@ -165,12 +157,11 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/home/damian/Schreibtisch/PortNote/prisma/schema.prisma",
+    "sourceFilePath": "/app/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": null,
-    "schemaEnvPath": "../../../.env"
+    "rootEnvPath": null
   },
   "relativePath": "../..",
   "clientVersion": "6.7.0",
@@ -178,7 +169,7 @@ const config = {
   "datasourceNames": [
     "db"
   ],
-  "activeProvider": "postgresql",
+  "activeProvider": "sqlite",
   "postinstall": false,
   "inlineDatasources": {
     "db": {
@@ -188,8 +179,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider      = \"prisma-client-js\"\n  output        = \"./generated/prisma\"\n  binaryTargets = [\"native\", \"linux-musl-openssl-3.0.x\", \"linux-musl-arm64-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Server {\n  id   Int    @id @default(autoincrement())\n  name String\n  ip   String\n  host Int?\n}\n\nmodel Port {\n  id       Int     @id @default(autoincrement())\n  serverId Int\n  note     String?\n  port     Int\n}\n\nmodel Scan {\n  id       Int @id @default(autoincrement())\n  serverId Int\n}\n",
-  "inlineSchemaHash": "a4c4299358668d56a7c65c51cd3fca025a2657225372d994d996142ab5629c33",
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider      = \"prisma-client-js\"\n  output        = \"./generated/prisma\"\n  binaryTargets = [\"native\", \"linux-musl-openssl-3.0.x\", \"linux-musl-arm64-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"sqlite\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Server {\n  id   Int    @id @default(autoincrement())\n  name String\n  ip   String\n  host Int?\n}\n\nmodel Port {\n  id       Int     @id @default(autoincrement())\n  serverId Int\n  note     String?\n  port     Int\n}\n\nmodel Scan {\n  id       Int @id @default(autoincrement())\n  serverId Int\n}\n",
+  "inlineSchemaHash": "9caac964b7c9b758a5ee4fbf0af1ad0cadb105b3890035d6d6a789ef82a5b5ac",
   "copyEngine": true
 }
 config.dirname = '/'

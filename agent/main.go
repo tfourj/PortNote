@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"os"
@@ -9,8 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 	scanTimeout  = 750 * time.Millisecond
 	workerCount  = 2000
 	maxPort      = 65535
-	dbMaxConns   = 5
+	dbMaxConns   = 1
 )
 
 var (
@@ -31,19 +31,34 @@ type Server struct {
 }
 
 func main() {
-	dbConfig, err := pgxpool.ParseConfig(connString)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing connection string: %v\n", err)
+	if connString == "" {
+		fmt.Fprintln(os.Stderr, "DATABASE_URL is not set")
 		os.Exit(1)
 	}
-	dbConfig.MaxConns = dbMaxConns
 
-	dbPool, err := pgxpool.ConnectConfig(context.Background(), dbConfig)
+	db, err := sql.Open("sqlite", connString)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to open database: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(dbMaxConns)
+	db.SetMaxIdleConns(dbMaxConns)
+
+	if err := db.PingContext(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-	defer dbPool.Close()
+
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL;`); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to enable WAL mode: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000;`); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to set busy timeout: %v\n", err)
+		os.Exit(1)
+	}
 
 	ticker := time.NewTicker(scanInterval)
 	defer ticker.Stop()
@@ -51,15 +66,15 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			processScans(dbPool)
+			processScans(db)
 		}
 	}
 }
 
-func processScans(db *pgxpool.Pool) {
+func processScans(db *sql.DB) {
 	ctx := context.Background()
 
-	rows, err := db.Query(ctx, `SELECT "serverId" FROM "Scan"`)
+	rows, err := db.QueryContext(ctx, `SELECT "serverId" FROM "Scan"`)
 	if err != nil {
 		fmt.Printf("Error fetching scans: %v\n", err)
 		return
@@ -74,8 +89,8 @@ func processScans(db *pgxpool.Pool) {
 		}
 
 		var server Server
-		err := db.QueryRow(ctx,
-			`SELECT id, ip FROM "Server" WHERE id = $1`, serverID).Scan(&server.ID, &server.IP)
+		err := db.QueryRowContext(ctx,
+			`SELECT id, ip FROM "Server" WHERE id = ?`, serverID).Scan(&server.ID, &server.IP)
 		if err != nil {
 			fmt.Printf("Error fetching server %d: %v\n", serverID, err)
 			continue
@@ -88,10 +103,14 @@ func processScans(db *pgxpool.Pool) {
 			continue
 		}
 
-		_, err = db.Exec(ctx, `DELETE FROM "Scan" WHERE "serverId" = $1`, serverID)
+		_, err = db.ExecContext(ctx, `DELETE FROM "Scan" WHERE "serverId" = ?`, serverID)
 		if err != nil {
 			fmt.Printf("Error deleting scan entry: %v\n", err)
 		}
+	}
+
+	if err := rows.Err(); err != nil {
+		fmt.Printf("Error iterating scans: %v\n", err)
 	}
 }
 
@@ -139,11 +158,11 @@ func scanPorts(ip string) []int {
 	return openPorts
 }
 
-func savePorts(db *pgxpool.Pool, serverID int, ports []int) error {
+func savePorts(db *sql.DB, serverID int, ports []int) error {
 	ctx := context.Background()
 
 	existingPorts := make(map[int]struct{})
-	rows, err := db.Query(ctx, `SELECT port FROM "Port" WHERE "serverId" = $1`, serverID)
+	rows, err := db.QueryContext(ctx, `SELECT port FROM "Port" WHERE "serverId" = ?`, serverID)
 	if err != nil {
 		return fmt.Errorf("error querying existing ports: %w", err)
 	}
@@ -168,21 +187,27 @@ func savePorts(db *pgxpool.Pool, serverID int, ports []int) error {
 		return nil
 	}
 
-	batch := &pgx.Batch{}
-	for _, port := range newPorts {
-		batch.Queue(
-			`INSERT INTO "Port" ("serverId", port) VALUES ($1, $2)`,
-			serverID,
-			port,
-		)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("error starting transaction: %w", err)
 	}
 
-	results := db.SendBatch(ctx, batch)
-	defer results.Close()
-
-	_, err = results.Exec()
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO "Port" ("serverId", port) VALUES (?, ?)`)
 	if err != nil {
-		return fmt.Errorf("batch insert error: %w", err)
+		_ = tx.Rollback()
+		return fmt.Errorf("error preparing insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, port := range newPorts {
+		if _, err := stmt.ExecContext(ctx, serverID, port); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("batch insert error: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("error committing insert: %w", err)
 	}
 
 	return nil

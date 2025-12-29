@@ -1,6 +1,7 @@
 services:
   web:
-    image: haedlessdev/portnote:latest
+    build:
+      context: .
     ports:
       - "3000:3000"
     environment:
@@ -8,28 +9,18 @@ services:
       USER_SECRET: RANDOM_SECRET # Replace with a secure random string
       LOGIN_USERNAME: username # Replace with a username
       LOGIN_PASSWORD: mypassword # Replace with a custom password
-      DATABASE_URL: "postgresql://postgres:postgres@db:5432/postgres"
-    depends_on:
-      db:
-        condition: service_started
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - portnote_data:/data
 
   agent:
-    image: haedlessdev/portnote-agent:latest
+    build:
+      context: ./agent
+    user: "0:0"
     environment:
-      DATABASE_URL: "postgresql://postgres:postgres@db:5432/postgres"
-    depends_on:
-      db:
-        condition: service_started
-
-  db:
-    image: postgres:17
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      DATABASE_URL: "file:/data/portnote.db"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - portnote_data:/data
 
 volumes:
-  postgres_data:
+  portnote_data:

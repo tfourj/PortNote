@@ -30,6 +30,9 @@ WORKDIR /root/
 
 COPY --from=builder /app/app .
 
+# Ensure the SQLite data directory is writable for the runtime user
+RUN mkdir -p /data && chown -R nobody:nobody /data
+
 # Security Hardening
 USER nobody:nobody
 ENV GOMAXPROCS=1

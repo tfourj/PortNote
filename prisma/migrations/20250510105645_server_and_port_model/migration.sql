@@ -1,18 +1,14 @@
 -- CreateTable
 CREATE TABLE "Server" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "name" TEXT NOT NULL,
     "ip" TEXT NOT NULL,
-    "host" INTEGER,
-
-    CONSTRAINT "Server_pkey" PRIMARY KEY ("id")
+    "host" INTEGER
 );
 
 -- CreateTable
 CREATE TABLE "Port" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "note" TEXT,
-    "port" INTEGER NOT NULL,
-
-    CONSTRAINT "Port_pkey" PRIMARY KEY ("id")
+    "port" INTEGER NOT NULL
 );
