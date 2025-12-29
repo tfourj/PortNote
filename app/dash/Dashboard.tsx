@@ -251,6 +251,7 @@ export default function Dashboard() {
             error: scan.error
           }))
         );
+        setActiveScansCount(scans.length);
         activeScanIdsRef.current = nextIds;
 
         if (endedScan) {
