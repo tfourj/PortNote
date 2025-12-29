@@ -611,6 +611,17 @@ const generateRandomPort = () => {
     ? Math.min(100, Math.round((selectedScan.scannedPorts / selectedScan.totalPorts) * 100))
     : 0;
 
+  const nextScanAt = useMemo(() => {
+    if (!scanEnabledSetting || !lastScanAt) {
+      return null;
+    }
+    const last = new Date(lastScanAt);
+    if (Number.isNaN(last.getTime())) {
+      return null;
+    }
+    return new Date(last.getTime() + scanIntervalMinutes * 60 * 1000);
+  }, [scanEnabledSetting, lastScanAt, scanIntervalMinutes]);
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -777,6 +788,11 @@ const generateRandomPort = () => {
               <div className="text-xs opacity-70">
                 Last scan: {lastScanAt ? new Date(lastScanAt).toLocaleString() : "Never"}
               </div>
+              {scanEnabledSetting && (
+                <div className="text-xs opacity-70">
+                  Next scan: {nextScanAt ? nextScanAt.toLocaleString() : "Waiting for first interval"}
+                </div>
+              )}
               <div className="flex items-center gap-2 text-xs opacity-70">
                 {activeScansCount > 0 && (
                   <span className="loading loading-spinner loading-xs"></span>
