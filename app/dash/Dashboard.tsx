@@ -120,6 +120,7 @@ export default function Dashboard() {
     }
 
     let closed = false;
+    let completed = false;
     const source = new EventSource(`/api/scan/stream?scanId=${activeScanId}`);
 
     source.onmessage = (event) => {
@@ -127,19 +128,22 @@ export default function Dashboard() {
       setScanProgress(payload);
 
       if (payload.status === "done") {
+        completed = true;
         fetchData().finally(() => {
           setActiveScanId(null);
         });
       }
 
       if (payload.status === "error" || payload.status === "missing") {
+        completed = true;
         handleError(payload.error || "Scan failed");
         setActiveScanId(null);
       }
     };
 
     source.onerror = () => {
-      if (closed) {
+      if (closed || completed) {
+        source.close();
         return;
       }
       closed = true;

@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,15 +18,17 @@ import (
 
 const (
 	scanInterval           = 10 * time.Second
-	scanTimeout            = 750 * time.Millisecond
+	defaultScanTimeout     = 1500 * time.Millisecond
 	progressUpdateInterval = 1 * time.Second
-	workerCount            = 2000
+	defaultWorkerCount     = 500
 	maxPort                = 65535
 	dbMaxConns             = 1
 )
 
 var (
 	connString = os.Getenv("DATABASE_URL") // Changed to var
+	scanTimeout = defaultScanTimeout
+	workerCount = defaultWorkerCount
 )
 
 type Server struct {
@@ -37,6 +41,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "DATABASE_URL is not set")
 		os.Exit(1)
 	}
+
+	scanTimeout = envDurationMS("SCAN_TIMEOUT_MS", defaultScanTimeout)
+	workerCount = envInt("SCAN_WORKERS", defaultWorkerCount)
 
 	db, err := sql.Open("sqlite", connString)
 	if err != nil {
@@ -281,4 +288,28 @@ func markScanDone(ctx context.Context, db *sql.DB, scanID int, totalPorts int, o
 func markScanError(ctx context.Context, db *sql.DB, scanID int, message string) error {
 	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET status = 'error', error = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, message, scanID)
 	return err
+}
+
+func envInt(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func envDurationMS(name string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return time.Duration(parsed) * time.Millisecond
 }
