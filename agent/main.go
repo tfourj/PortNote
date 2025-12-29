@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -18,7 +19,10 @@ import (
 
 const (
 	scanInterval           = 10 * time.Second
-	defaultScanTimeout     = 1500 * time.Millisecond
+	defaultScanTimeout     = 500 * time.Millisecond
+	defaultRetryTimeout    = 1500 * time.Millisecond
+	defaultRetryDelay      = 25 * time.Millisecond
+	defaultScanRetries     = 1
 	progressUpdateInterval = 1 * time.Second
 	defaultWorkerCount     = 500
 	maxPort                = 65535
@@ -26,9 +30,12 @@ const (
 )
 
 var (
-	connString = os.Getenv("DATABASE_URL") // Changed to var
-	scanTimeout = defaultScanTimeout
-	workerCount = defaultWorkerCount
+	connString      = os.Getenv("DATABASE_URL") // Changed to var
+	scanTimeout     = defaultScanTimeout
+	scanRetryTimeout = defaultRetryTimeout
+	scanRetryDelay  = defaultRetryDelay
+	scanRetries     = defaultScanRetries
+	workerCount     = defaultWorkerCount
 )
 
 type Server struct {
@@ -55,6 +62,9 @@ func main() {
 	}
 
 	scanTimeout = envDurationMS("SCAN_TIMEOUT_MS", defaultScanTimeout)
+	scanRetryTimeout = envDurationMS("SCAN_RETRY_TIMEOUT_MS", defaultRetryTimeout)
+	scanRetryDelay = envDurationMS("SCAN_RETRY_DELAY_MS", defaultRetryDelay)
+	scanRetries = envInt("SCAN_RETRIES", defaultScanRetries)
 	workerCount = envInt("SCAN_WORKERS", defaultWorkerCount)
 
 	db, err := sql.Open("sqlite", connString)
@@ -199,8 +209,16 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 }
 
 func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int) bool) ([]int, bool) {
-	ports := make(chan int, 10000)
-	results := make(chan int)
+	workerTotal := workerCount
+	if workerTotal < 1 {
+		workerTotal = 1
+	}
+	if totalPorts > 0 && workerTotal > totalPorts {
+		workerTotal = totalPorts
+	}
+
+	ports := make(chan int, workerTotal*4)
+	results := make(chan int, workerTotal*2)
 	var openPorts []int
 	var wg sync.WaitGroup
 	var scanned atomic.Int64
@@ -240,19 +258,25 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 	}
 
 	// Start workers
-	for i := 0; i < workerCount; i++ {
+	for i := 0; i < workerTotal; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			dialer := &net.Dialer{
+				Timeout:   scanTimeout,
+				KeepAlive: -1,
+			}
 			for port := range ports {
 				if canceled.Load() {
-					continue
+					return
 				}
-				conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), scanTimeout)
-				if err == nil {
-					conn.Close()
+				if dialPort(dialer, ip, port, canceled.Load) {
 					openCount.Add(1)
-					results <- port
+					select {
+					case results <- port:
+					case <-cancelCh:
+						return
+					}
 				}
 				scanned.Add(1)
 			}
@@ -262,10 +286,12 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 	// Send ports to workers
 	go func() {
 		for port := 1; port <= totalPorts; port++ {
-			if canceled.Load() {
-				break
+			select {
+			case <-cancelCh:
+				close(ports)
+				return
+			case ports <- port:
 			}
-			ports <- port
 		}
 		close(ports)
 	}()
@@ -284,6 +310,55 @@ func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)
 
 	sort.Ints(openPorts)
 	return openPorts, canceled.Load()
+}
+
+func dialPort(dialer *net.Dialer, ip string, port int, isCanceled func() bool) bool {
+	address := net.JoinHostPort(ip, strconv.Itoa(port))
+	timeout := scanTimeout
+
+	for attempt := 0; attempt <= scanRetries; attempt++ {
+		if isCanceled() {
+			return false
+		}
+
+		dialer.Timeout = timeout
+		conn, err := dialer.Dial("tcp", address)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+
+		if attempt < scanRetries && shouldRetry(err) {
+			timeout = scanRetryTimeout
+			if scanRetryDelay > 0 {
+				time.Sleep(scanRetryDelay)
+			}
+			continue
+		}
+
+		return false
+	}
+
+	return false
+}
+
+func shouldRetry(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() || netErr.Temporary() {
+			return true
+		}
+	}
+
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "too many open files") ||
+		strings.Contains(message, "cannot assign requested address") ||
+		strings.Contains(message, "resource temporarily unavailable") ||
+		strings.Contains(message, "address already in use") {
+		return true
+	}
+
+	return false
 }
 
 func savePorts(db *sql.DB, serverID int, ports []int) error {
