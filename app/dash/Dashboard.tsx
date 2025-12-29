@@ -44,6 +44,16 @@ interface SettingsResponse {
   activeScansCount?: number;
 }
 
+interface CleanupPort {
+  id: number;
+  serverId: number;
+  port: number;
+  note?: string | null;
+  serverName?: string | null;
+  serverHostId?: number | null;
+  hostName?: string | null;
+}
+
 export default function Dashboard() {
   const [servers, setServers] = useState<Server[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,6 +101,9 @@ export default function Dashboard() {
   const [scannedServersCount, setScannedServersCount] = useState(0);
   const [activeScansCount, setActiveScansCount] = useState(0);
   const activeScanIdsRef = useRef<Set<number>>(new Set());
+  const [isCleanPortsOpen, setIsCleanPortsOpen] = useState(false);
+  const [portsToClean, setPortsToClean] = useState<CleanupPort[]>([]);
+  const [isCleanPortsLoading, setIsCleanPortsLoading] = useState(false);
 
 
   useEffect(() => {
@@ -252,6 +265,39 @@ export default function Dashboard() {
       loadSettings();
     } catch (error: any) {
       handleError("Failed to queue scans: " + error.message);
+    }
+  };
+
+  const handleOpenCleanPorts = async () => {
+    setIsCleanPortsLoading(true);
+    try {
+      const response = await axios.get<{ ports: CleanupPort[] }>("/api/ports/cleanup");
+      setPortsToClean(response.data.ports ?? []);
+      setIsCleanPortsOpen(true);
+      setIsSettingsOpen(false);
+    } catch (error: any) {
+      handleError("Failed to load ports for cleanup: " + error.message);
+    } finally {
+      setIsCleanPortsLoading(false);
+    }
+  };
+
+  const handleConfirmCleanPorts = async () => {
+    if (portsToClean.length === 0) {
+      setIsCleanPortsOpen(false);
+      return;
+    }
+
+    setIsCleanPortsLoading(true);
+    try {
+      await axios.post("/api/ports/cleanup", { ids: portsToClean.map((port) => port.id) });
+      setIsCleanPortsOpen(false);
+      setPortsToClean([]);
+      await fetchData();
+    } catch (error: any) {
+      handleError("Failed to clean ports: " + error.message);
+    } finally {
+      setIsCleanPortsLoading(false);
     }
   };
 
@@ -536,6 +582,24 @@ const generateRandomPort = () => {
     return server ? server.name : `Server ${serverId}`;
   };
 
+  const getCleanupServerLabel = (item: CleanupPort) => {
+    if (item.serverHostId) {
+      const hostLabel = item.hostName ? ` (Host: ${item.hostName})` : "";
+      return `VM: ${item.serverName ?? `Server ${item.serverId}`}${hostLabel}`;
+    }
+    return `Host: ${item.serverName ?? `Server ${item.serverId}`}`;
+  };
+
+  const isPortDown = (port: Port) => {
+    if (!port.lastCheckedAt) {
+      return false;
+    }
+    if (!port.lastSeenAt) {
+      return true;
+    }
+    return new Date(port.lastSeenAt).getTime() < new Date(port.lastCheckedAt).getTime();
+  };
+
   const selectedScan = useMemo(() => {
     if (!selectedScanId) {
       return null;
@@ -723,9 +787,72 @@ const generateRandomPort = () => {
               <p className="text-xs opacity-70">Periodic scans are queued and run in the background.</p>
             </div>
             <div className="modal-action">
+              <button
+                className="btn"
+                onClick={handleOpenCleanPorts}
+                aria-label="Clean closed ports"
+                disabled={isCleanPortsLoading}
+              >
+                {isCleanPortsLoading ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  "Clean closed ports"
+                )}
+              </button>
               <button className="btn" onClick={handleRunPeriodicScan} aria-label="Queue periodic scan now">Run now</button>
               <button className="btn btn-primary" onClick={handleSaveSettings} aria-label="Save scan settings">Save</button>
               <button className="btn" onClick={() => setIsSettingsOpen(false)} aria-label="Close scan settings">Close</button>
+            </div>
+          </div>
+        </dialog>
+      )}
+{isCleanPortsOpen && (
+        <dialog className="modal modal-open" aria-labelledby="clean-ports-title">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg pb-2" id="clean-ports-title">Clean Closed Ports</h3>
+            <div className="space-y-3">
+              {portsToClean.length === 0 ? (
+                <p className="text-sm opacity-70">No closed ports found from the latest scans.</p>
+              ) : (
+                <>
+                  <p className="text-sm opacity-70">
+                    The following ports were not seen open in the latest scan and will be removed.
+                  </p>
+                  <div className="max-h-64 overflow-y-auto space-y-2 border border-base-300 rounded-lg p-3">
+                    {portsToClean.map((item) => (
+                      <div key={item.id} className="text-sm flex items-start justify-between gap-2">
+                        <span className="font-medium">{getCleanupServerLabel(item)}</span>
+                        <span className="text-xs opacity-70">
+                          Port {item.port}
+                          {item.note ? ` • ${item.note}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-action">
+              <button
+                className="btn btn-error"
+                onClick={handleConfirmCleanPorts}
+                aria-label="Confirm clean closed ports"
+                disabled={isCleanPortsLoading || portsToClean.length === 0}
+              >
+                {isCleanPortsLoading ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  `Remove ${portsToClean.length} ports`
+                )}
+              </button>
+              <button
+                className="btn"
+                onClick={() => setIsCleanPortsOpen(false)}
+                aria-label="Close clean ports dialog"
+                disabled={isCleanPortsLoading}
+              >
+                Close
+              </button>
             </div>
           </div>
         </dialog>
@@ -1155,31 +1282,45 @@ const generateRandomPort = () => {
                     <div className="ml-4 mt-2 bg-base-100 rounded-xl p-3 shadow-sm" role="region" aria-label={`Ports for server ${server.name}`}>
                       <div className="text-xs font-medium mb-2 text-base-content/70">PORTS</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {sortedPorts(server.ports).map(port => (
-                          <div key={port.id} className="flex items-center gap-2 p-2 hover:bg-base-200 rounded-lg transition-colors border border-base-300" role="listitem" aria-label={`Port ${port.port}${port.note ? `, ${port.note}` : ''}`}>
-                            <div className="badge badge-neutral w-16 shrink-0 hover:bg-primary hover:text-primary-content cursor-pointer" onClick={() => {window.open(`http://${server.ip}:${port.port}`, '_blank')}} aria-label={`Open port ${port.port}`} >{port.port}</div>
-                            <span className="text-sm flex-1 truncate">{port.note}</span>
-                            <div className="flex gap-1">
-                              <button
-                                className="btn btn-xs btn-ghost"
-                                onClick={() => {
-                                  setEditItem(port);
-                                  (document.getElementById('edit') as HTMLDialogElement)?.showModal();
-                                }}
-                                aria-label={`Edit port ${port.port}`}
+                        {sortedPorts(server.ports).map(port => {
+                          const portDown = isPortDown(port);
+                          return (
+                            <div
+                              key={port.id}
+                              className={`flex items-center gap-2 p-2 hover:bg-base-200 rounded-lg transition-colors border ${portDown ? "border-error/60 bg-error/5" : "border-base-300"}`}
+                              role="listitem"
+                              aria-label={`Port ${port.port}${port.note ? `, ${port.note}` : ""}${portDown ? ", down" : ""}`}
+                            >
+                              <div
+                                className={`badge w-16 shrink-0 hover:bg-primary hover:text-primary-content cursor-pointer ${portDown ? "badge-error" : "badge-neutral"}`}
+                                onClick={() => {window.open(`http://${server.ip}:${port.port}`, "_blank")}}
+                                aria-label={`Open port ${port.port}`}
                               >
-                                <Edit size={14} />
-                              </button>
-                              <button
-                                className="btn btn-xs btn-ghost text-error"
-                                onClick={() => handleDelete(2, port.id)}
-                                aria-label={`Delete port ${port.port}`}
-                              >
-                                <Trash size={14} />
-                              </button>
+                                {port.port}
+                              </div>
+                              <span className="text-sm flex-1 truncate">{port.note}</span>
+                              <div className="flex gap-1">
+                                <button
+                                  className="btn btn-xs btn-ghost"
+                                  onClick={() => {
+                                    setEditItem(port);
+                                    (document.getElementById("edit") as HTMLDialogElement)?.showModal();
+                                  }}
+                                  aria-label={`Edit port ${port.port}`}
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                <button
+                                  className="btn btn-xs btn-ghost text-error"
+                                  onClick={() => handleDelete(2, port.id)}
+                                  aria-label={`Delete port ${port.port}`}
+                                >
+                                  <Trash size={14} />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1242,31 +1383,45 @@ const generateRandomPort = () => {
                           <div className="ml-4 mt-2 bg-base-100 rounded-xl p-3 shadow-sm" role="region" aria-label={`Ports for VM ${vm.name}`}>
                             <div className="text-xs font-medium mb-2 text-base-content/70">PORTS</div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2" role="list" aria-label={`Port list for ${vm.name}`}>
-                              {sortedPorts(vm.ports).map(port => (
-                                <div key={port.id} className="flex items-center gap-2 p-2 hover:bg-base-200 rounded-lg transition-colors border border-base-300" role="listitem" aria-label={`Port ${port.port}${port.note ? `, ${port.note}` : ''}`}>
-                                  <div className="badge badge-neutral w-16 shrink-0 hover:bg-primary hover:text-primary-content cursor-pointer" onClick={() => {window.open(`http://${vm.ip}:${port.port}`, '_blank')}} aria-label={`Open port ${port.port}`}>{port.port}</div>
-                                  <span className="text-sm flex-1 truncate">{port.note}</span>
-                                  <div className="flex gap-1">
-                                    <button
-                                      className="btn btn-xs btn-ghost"
-                                      onClick={() => {
-                                        setEditItem(port);
-                                        (document.getElementById('edit') as HTMLDialogElement)?.showModal();
-                                      }}
-                                      aria-label={`Edit port ${port.port}`}
+                              {sortedPorts(vm.ports).map(port => {
+                                const portDown = isPortDown(port);
+                                return (
+                                  <div
+                                    key={port.id}
+                                    className={`flex items-center gap-2 p-2 hover:bg-base-200 rounded-lg transition-colors border ${portDown ? "border-error/60 bg-error/5" : "border-base-300"}`}
+                                    role="listitem"
+                                    aria-label={`Port ${port.port}${port.note ? `, ${port.note}` : ""}${portDown ? ", down" : ""}`}
+                                  >
+                                    <div
+                                      className={`badge w-16 shrink-0 hover:bg-primary hover:text-primary-content cursor-pointer ${portDown ? "badge-error" : "badge-neutral"}`}
+                                      onClick={() => {window.open(`http://${vm.ip}:${port.port}`, "_blank")}}
+                                      aria-label={`Open port ${port.port}`}
                                     >
-                                      <Edit size={14} />
-                                    </button>
-                                    <button
-                                      className="btn btn-xs btn-ghost text-error"
-                                      onClick={() => handleDelete(2, port.id)}
-                                      aria-label={`Delete port ${port.port}`}
-                                    >
-                                      <Trash size={14} />
-                                    </button>
+                                      {port.port}
+                                    </div>
+                                    <span className="text-sm flex-1 truncate">{port.note}</span>
+                                    <div className="flex gap-1">
+                                      <button
+                                        className="btn btn-xs btn-ghost"
+                                        onClick={() => {
+                                          setEditItem(port);
+                                          (document.getElementById("edit") as HTMLDialogElement)?.showModal();
+                                        }}
+                                        aria-label={`Edit port ${port.port}`}
+                                      >
+                                        <Edit size={14} />
+                                      </button>
+                                      <button
+                                        className="btn btn-xs btn-ghost text-error"
+                                        onClick={() => handleDelete(2, port.id)}
+                                        aria-label={`Delete port ${port.port}`}
+                                      >
+                                        <Trash size={14} />
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}

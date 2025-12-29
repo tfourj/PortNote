@@ -16,4 +16,6 @@ export interface Port {
     serverId: number;
     note: string | null;
     port: number;
+    lastSeenAt?: string | null;
+    lastCheckedAt?: string | null;
 }

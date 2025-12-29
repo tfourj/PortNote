@@ -27,6 +27,8 @@ model Port {
   serverId  Int
   note      String?
   port      Int
+  lastSeenAt    DateTime?
+  lastCheckedAt DateTime?
 }
 
 model Scan {

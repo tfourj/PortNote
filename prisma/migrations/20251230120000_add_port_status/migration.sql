@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Port" ADD COLUMN "lastSeenAt" DATETIME;
+ALTER TABLE "Port" ADD COLUMN "lastCheckedAt" DATETIME;

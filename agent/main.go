@@ -380,16 +380,8 @@ func savePorts(db *sql.DB, serverID int, ports []int) error {
 		}
 		existingPorts[port] = struct{}{}
 	}
-
-	var newPorts []int
-	for _, port := range ports {
-		if _, exists := existingPorts[port]; !exists {
-			newPorts = append(newPorts, port)
-		}
-	}
-
-	if len(newPorts) == 0 {
-		return nil
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating ports: %w", err)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
@@ -397,17 +389,37 @@ func savePorts(db *sql.DB, serverID int, ports []int) error {
 		return fmt.Errorf("error starting transaction: %w", err)
 	}
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO "Port" ("serverId", port) VALUES (?, ?)`)
+	if _, err := tx.ExecContext(ctx, `UPDATE "Port" SET "lastCheckedAt" = CURRENT_TIMESTAMP WHERE "serverId" = ?`, serverID); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("error updating lastCheckedAt: %w", err)
+	}
+
+	updateSeenStmt, err := tx.PrepareContext(ctx, `UPDATE "Port" SET "lastSeenAt" = CURRENT_TIMESTAMP WHERE "serverId" = ? AND port = ?`)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("error preparing lastSeenAt update: %w", err)
+	}
+	defer updateSeenStmt.Close()
+
+	insertStmt, err := tx.PrepareContext(ctx, `INSERT INTO "Port" ("serverId", port, "lastSeenAt", "lastCheckedAt") VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("error preparing insert: %w", err)
 	}
-	defer stmt.Close()
+	defer insertStmt.Close()
 
-	for _, port := range newPorts {
-		if _, err := stmt.ExecContext(ctx, serverID, port); err != nil {
+	for _, port := range ports {
+		if _, exists := existingPorts[port]; exists {
+			if _, err := updateSeenStmt.ExecContext(ctx, serverID, port); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("error updating lastSeenAt: %w", err)
+			}
+			continue
+		}
+
+		if _, err := insertStmt.ExecContext(ctx, serverID, port); err != nil {
 			_ = tx.Rollback()
-			return fmt.Errorf("batch insert error: %w", err)
+			return fmt.Errorf("insert error: %w", err)
 		}
 	}
 
