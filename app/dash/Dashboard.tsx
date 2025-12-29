@@ -273,6 +273,10 @@ export default function Dashboard() {
     }
   };
 
+  const isScanActive = activeScanId !== null && (scanProgress?.status === "queued" || scanProgress?.status === "scanning");
+  const isScanActiveForServer = (id: number) =>
+    isScanActive && scanProgress?.serverId === id;
+
   const handleScan = async (id: number) => {
     try {
       setIsScanModalOpen(true);
@@ -293,6 +297,20 @@ export default function Dashboard() {
       setActiveScanId(null);
       setScanProgress(null);
     }
+  };
+
+  const handleScanButtonClick = (id: number) => {
+    if (isScanActiveForServer(id)) {
+      setIsScanModalOpen(true);
+      return;
+    }
+
+    if (isScanActive && scanProgress?.serverId !== id) {
+      setIsScanModalOpen(true);
+      return;
+    }
+
+    handleScan(id);
   };
 
   const resetForm = () => {
@@ -371,6 +389,9 @@ const generateRandomPort = () => {
                 <span className="loading loading-spinner text-primary loading-lg"></span>
               )}
               <p className="text-center">{scanStatusLabel}</p>
+              {scanProgress?.status === "queued" || scanProgress?.status === "scanning" ? (
+                <p className="text-center text-xs opacity-70">You can close this window. The scan keeps running in the background.</p>
+              ) : null}
               <div className="w-full space-y-2">
                 <progress className="progress progress-primary w-full" value={scanPercent} max="100"></progress>
                 <div className="flex justify-between text-xs opacity-70">
@@ -391,9 +412,9 @@ const generateRandomPort = () => {
               <button
                 className="btn"
                 onClick={() => setIsScanModalOpen(false)}
-                aria-label="Close scan dialog"
+                aria-label="Cancel scan dialog"
               >
-                Close
+                Cancel
               </button>
             </div>
           </div>
@@ -748,10 +769,14 @@ const generateRandomPort = () => {
                     <div className="font-bold text-lg">{server.name}</div>
                     <button
                       className="btn btn-xs btn-ghost text-primary"
-                      onClick={() => handleScan(server.id)}
+                      onClick={() => handleScanButtonClick(server.id)}
                       aria-label={`Scan ports for server ${server.name}`}
                     >
-                      <ScanSearch size={14} />
+                      {isScanActiveForServer(server.id) ? (
+                        <span className="loading loading-spinner loading-xs"></span>
+                      ) : (
+                        <ScanSearch size={14} />
+                      )}
                     </button>
                   </div>
                   <button
@@ -820,12 +845,16 @@ const generateRandomPort = () => {
                             }`} />
                           </button>
                       <div className="font-medium">🖥️ {vm.name}</div>
-                      <button
+                  <button
                     className="btn btn-xs btn-ghost text-primary"
-                    onClick={() => handleScan(vm.id)}
+                    onClick={() => handleScanButtonClick(vm.id)}
                     aria-label={`Scan ports for VM ${vm.name}`}
                   >
-                    <ScanSearch size={14} />
+                    {isScanActiveForServer(vm.id) ? (
+                      <span className="loading loading-spinner loading-xs"></span>
+                    ) : (
+                      <ScanSearch size={14} />
+                    )}
                   </button>
                       <div className="ml-auto flex gap-2">
                         <button
