@@ -22,6 +22,18 @@ interface ScanProgress {
   error?: string | null;
 }
 
+interface ActiveScanResponse {
+  scan: {
+    id: number;
+    serverId: number;
+    status: ScanStatus;
+    scannedPorts: number;
+    totalPorts: number;
+    openPorts: number;
+    error?: string | null;
+  } | null;
+}
+
 export default function Dashboard() {
   const [servers, setServers] = useState<Server[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,6 +125,35 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    const loadActiveScan = async () => {
+      try {
+        const response = await axios.get<ActiveScanResponse>("/api/scan/active");
+        const activeScan = response.data.scan;
+        if (!activeScan) {
+          return;
+        }
+        if (activeScan.status !== "queued" && activeScan.status !== "scanning") {
+          return;
+        }
+        setScanProgress({
+          scanId: activeScan.id,
+          serverId: activeScan.serverId,
+          status: activeScan.status,
+          scannedPorts: activeScan.scannedPorts,
+          totalPorts: activeScan.totalPorts,
+          openPorts: activeScan.openPorts,
+          error: activeScan.error
+        });
+        setActiveScanId(activeScan.id);
+      } catch (error: any) {
+        handleError("Failed to load scan status: " + error.message);
+      }
+    };
+
+    loadActiveScan();
+  }, []);
 
   useEffect(() => {
     if (activeScanId === null) {
