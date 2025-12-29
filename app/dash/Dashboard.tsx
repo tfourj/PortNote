@@ -106,11 +106,30 @@ export default function Dashboard() {
   const [portsToClean, setPortsToClean] = useState<CleanupPort[]>([]);
   const [isCleanPortsLoading, setIsCleanPortsLoading] = useState(false);
   const [dismissedDownPortsKey, setDismissedDownPortsKey] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      return Cookies.get("dismissedDownPortsKey") ?? null;
+    if (typeof window === "undefined") {
+      return null;
     }
-    return null;
+    try {
+      return window.localStorage.getItem("dismissedDownPortsKey");
+    } catch {
+      return null;
+    }
   });
+
+  const persistDismissedKey = (value: string | null) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      if (!value) {
+        window.localStorage.removeItem("dismissedDownPortsKey");
+        return;
+      }
+      window.localStorage.setItem("dismissedDownPortsKey", value);
+    } catch {
+      // Ignore storage failures.
+    }
+  };
 
 
   useEffect(() => {
@@ -124,18 +143,6 @@ export default function Dashboard() {
   useEffect(() => {
     Cookies.set('serverSort', sortType, { expires: 365, sameSite: 'Lax', secure: process.env.NODE_ENV === 'production' });
   }, [sortType]);
-
-  useEffect(() => {
-    if (!dismissedDownPortsKey) {
-      Cookies.remove("dismissedDownPortsKey");
-      return;
-    }
-    Cookies.set("dismissedDownPortsKey", dismissedDownPortsKey, {
-      expires: 365,
-      sameSite: "Lax",
-      secure: process.env.NODE_ENV === "production"
-    });
-  }, [dismissedDownPortsKey]);
 
   const toggleExpanded = (id: number) => {
     setExpanded(prev => {
@@ -169,6 +176,21 @@ export default function Dashboard() {
     try {
       const response = await axios.get<Server[]>("/api/get");
       setServers(response.data);
+      const hasDownPorts = response.data.some((server) =>
+        server.ports.some((port) => {
+          if (!port.lastCheckedAt) {
+            return false;
+          }
+          if (!port.lastSeenAt) {
+            return true;
+          }
+          return new Date(port.lastSeenAt).getTime() < new Date(port.lastCheckedAt).getTime();
+        })
+      );
+      if (!hasDownPorts && dismissedDownPortsKey) {
+        setDismissedDownPortsKey(null);
+        persistDismissedKey(null);
+      }
     } catch (error: any) {
       handleError("Error loading data: " + error.message);
     }
@@ -651,16 +673,6 @@ const generateRandomPort = () => {
     return { total, serverIds, key: downPortIds.join(",") };
   }, [servers]);
 
-  useEffect(() => {
-    if (downPortsInfo.total === 0) {
-      setDismissedDownPortsKey(null);
-      return;
-    }
-    if (dismissedDownPortsKey && dismissedDownPortsKey !== downPortsInfo.key) {
-      setDismissedDownPortsKey(null);
-    }
-  }, [downPortsInfo, dismissedDownPortsKey]);
-
   const handleExpandDownPorts = () => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -953,7 +965,10 @@ const generateRandomPort = () => {
                   </button>
                   <button
                     className="btn btn-sm btn-ghost"
-                    onClick={() => setDismissedDownPortsKey(downPortsInfo.key)}
+                    onClick={() => {
+                      setDismissedDownPortsKey(downPortsInfo.key);
+                      persistDismissedKey(downPortsInfo.key);
+                    }}
                     aria-label="Dismiss closed ports warning"
                   >
                     Dismiss
@@ -1095,7 +1110,7 @@ const generateRandomPort = () => {
                         onChange={(e) => setServerIP(e.target.value)}
                         required
                     />
-                    <div className="flex gap-2 items-center">
+                    <div className="space-y-2">
                       <label className="label cursor-pointer">
                         <span className="label-text">Is VM?</span>
                         <input
@@ -1103,15 +1118,6 @@ const generateRandomPort = () => {
                             className="checkbox"
                             checked={isVm}
                             onChange={(e) => setIsVm(e.target.checked)}
-                        />
-                      </label>
-                      <label className="label cursor-pointer">
-                        <span className="label-text">Exclude from periodic scans</span>
-                        <input
-                            type="checkbox"
-                            className="checkbox"
-                            checked={excludeFromScan}
-                            onChange={(e) => setExcludeFromScan(e.target.checked)}
                         />
                       </label>
                       {isVm && (
@@ -1129,6 +1135,15 @@ const generateRandomPort = () => {
                             ))}
                           </select>
                       )}
+                      <label className="label cursor-pointer">
+                        <span className="label-text">Exclude from periodic scans</span>
+                        <input
+                            type="checkbox"
+                            className="checkbox"
+                            checked={excludeFromScan}
+                            onChange={(e) => setExcludeFromScan(e.target.checked)}
+                        />
+                      </label>
                     </div>
                   </div>
 
@@ -1208,7 +1223,7 @@ const generateRandomPort = () => {
                                 onChange={(e) => setEditItem({...editItem, ip: e.target.value})}
                                 required
                             />
-                            <div className="flex gap-2 items-center">
+                            <div className="space-y-2">
                               <label className="label cursor-pointer">
                                 <span className="label-text">Is VM?</span>
                                 <input
@@ -1235,18 +1250,6 @@ const generateRandomPort = () => {
 
                                 />
                               </label>
-                              <label className="label cursor-pointer">
-                                <span className="label-text">Exclude from periodic scans</span>
-                                <input
-                                    type="checkbox"
-                                    className="checkbox"
-                                    checked={!!editItem.excludeFromScan}
-                                    onChange={(e) => setEditItem({
-                                      ...editItem,
-                                      excludeFromScan: e.target.checked
-                                    })}
-                                />
-                              </label>
                               {editItem.host !== null && (
                                   <select
                                       className="select select-bordered w-full"
@@ -1267,6 +1270,18 @@ const generateRandomPort = () => {
                                         ))}
                                   </select>
                               )}
+                              <label className="label cursor-pointer">
+                                <span className="label-text">Exclude from periodic scans</span>
+                                <input
+                                    type="checkbox"
+                                    className="checkbox"
+                                    checked={!!editItem.excludeFromScan}
+                                    onChange={(e) => setEditItem({
+                                      ...editItem,
+                                      excludeFromScan: e.target.checked
+                                    })}
+                                />
+                              </label>
                             </div>
                           </div>
                       ) : (
