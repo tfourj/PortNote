@@ -145,6 +145,15 @@ exports.Prisma.ScanScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.SettingsScalarFieldEnum = {
+  id: 'id',
+  scanEnabled: 'scanEnabled',
+  scanIntervalMinutes: 'scanIntervalMinutes',
+  scanConcurrency: 'scanConcurrency',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -159,7 +168,8 @@ exports.Prisma.NullsOrder = {
 exports.Prisma.ModelName = {
   Server: 'Server',
   Port: 'Port',
-  Scan: 'Scan'
+  Scan: 'Scan',
+  Settings: 'Settings'
 };
 
 /**

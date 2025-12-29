@@ -1,7 +1,7 @@
 "use client";
 import Navbar from "@/components/Navbar";
 import ErrorToast from "@/components/Error";
-import { Edit, Plus, Trash, Dice5, Copy, ScanSearch, ChevronRight} from "lucide-react";
+import { Edit, Plus, Trash, Dice5, Copy, ScanSearch, ChevronRight, Settings } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import Fuse from "fuse.js";
@@ -32,6 +32,13 @@ interface ActiveScanResponse {
     openPorts: number;
     error?: string | null;
   } | null;
+}
+
+interface SettingsResponse {
+  scanEnabled: boolean;
+  scanIntervalMinutes: number;
+  scanConcurrency: number;
+  lastScanAt?: string | null;
 }
 
 export default function Dashboard() {
@@ -71,6 +78,11 @@ export default function Dashboard() {
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [activeScanId, setActiveScanId] = useState<number | null>(null);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [scanEnabledSetting, setScanEnabledSetting] = useState(true);
+  const [scanIntervalMinutes, setScanIntervalMinutes] = useState(1440);
+  const [scanConcurrency, setScanConcurrency] = useState(2);
+  const [lastScanAt, setLastScanAt] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -122,9 +134,25 @@ export default function Dashboard() {
     }
   };
 
+  const loadSettings = async () => {
+    try {
+      const response = await axios.get<SettingsResponse>("/api/settings");
+      setScanEnabledSetting(response.data.scanEnabled);
+      setScanIntervalMinutes(response.data.scanIntervalMinutes);
+      setScanConcurrency(response.data.scanConcurrency);
+      setLastScanAt(response.data.lastScanAt ?? null);
+    } catch (error: any) {
+      handleError("Failed to load settings: " + error.message);
+    }
+  };
+
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     const loadActiveScan = async () => {
@@ -202,6 +230,27 @@ export default function Dashboard() {
   const handleError = (message: string) => {
     setError(message);
     setShowError(true);
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      await axios.put("/api/settings", {
+        scanEnabled: scanEnabledSetting,
+        scanIntervalMinutes,
+        scanConcurrency
+      });
+      setIsSettingsOpen(false);
+    } catch (error: any) {
+      handleError("Failed to save settings: " + error.message);
+    }
+  };
+
+  const handleRunPeriodicScan = async () => {
+    try {
+      await axios.post("/api/scan/run-periodic");
+    } catch (error: any) {
+      handleError("Failed to queue scans: " + error.message);
+    }
   };
 
   const hostServers = useMemo(() => {
@@ -500,6 +549,59 @@ const generateRandomPort = () => {
           </div>
         </dialog>
       )}
+{isSettingsOpen && (
+        <dialog className="modal modal-open" aria-labelledby="settings-title">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg pb-2" id="settings-title">Scan Settings</h3>
+            <div className="space-y-4">
+              <label className="label cursor-pointer">
+                <span className="label-text">Enable periodic scans</span>
+                <input
+                  type="checkbox"
+                  className="toggle"
+                  checked={scanEnabledSetting}
+                  onChange={(event) => setScanEnabledSetting(event.target.checked)}
+                />
+              </label>
+              <div className="space-y-1">
+                <label className="label">
+                  <span className="label-text">Scan interval (minutes)</span>
+                </label>
+                <input
+                  type="number"
+                  className="input w-full"
+                  min={1}
+                  max={1440}
+                  value={scanIntervalMinutes}
+                  onChange={(event) => setScanIntervalMinutes(Number(event.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="label">
+                  <span className="label-text">Concurrent scans</span>
+                </label>
+                <input
+                  type="number"
+                  className="input w-full"
+                  min={1}
+                  max={10}
+                  value={scanConcurrency}
+                  onChange={(event) => setScanConcurrency(Number(event.target.value))}
+                />
+              </div>
+              <div className="text-xs opacity-70">
+                Last scan: {lastScanAt ? new Date(lastScanAt).toLocaleString() : "Never"}
+              </div>
+              <p className="text-xs opacity-70">Periodic scans are queued and run in the background.</p>
+            </div>
+            <div className="modal-action">
+              <button className="btn" onClick={handleRunPeriodicScan} aria-label="Queue periodic scan now">Run now</button>
+              <button className="btn btn-primary" onClick={handleSaveSettings} aria-label="Save scan settings">Save</button>
+              <button className="btn" onClick={() => setIsSettingsOpen(false)} aria-label="Close scan settings">Close</button>
+            </div>
+          </div>
+        </dialog>
+      )}
       <div className="grid grid-cols-12 pt-12">
         <div className="col-start-3 col-end-11" role="main" aria-label="Server and port management">
           <div className="w-full flex gap-2">
@@ -542,6 +644,14 @@ const generateRandomPort = () => {
                 aria-label="Generate random port"
             >
               <Dice5/>
+            </button>
+            <button
+                className="btn btn-square"
+                onClick={() => setIsSettingsOpen(true)}
+                title="Scan settings"
+                aria-label="Open scan settings"
+            >
+              <Settings />
             </button>
             {showRandomModal && randomPort !== null && (
                 <dialog open className="modal" aria-label="Random port generated">

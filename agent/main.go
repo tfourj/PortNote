@@ -36,6 +36,18 @@ type Server struct {
 	IP string
 }
 
+type Settings struct {
+	ScanEnabled         bool
+	ScanIntervalMinutes int
+	ScanConcurrency     int
+}
+
+type scanJob struct {
+	scanID     int
+	serverID   int
+	totalPorts int
+}
+
 func main() {
 	if connString == "" {
 		fmt.Fprintln(os.Stderr, "DATABASE_URL is not set")
@@ -75,24 +87,27 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			processScans(db)
+			ctx := context.Background()
+			settings, err := getSettings(ctx, db)
+			if err != nil {
+				fmt.Printf("Error loading settings: %v\n", err)
+				continue
+			}
+
+			if err := enqueuePeriodicScans(ctx, db, settings); err != nil {
+				fmt.Printf("Error scheduling periodic scans: %v\n", err)
+			}
+
+			processScans(ctx, db, settings)
 		}
 	}
 }
 
-func processScans(db *sql.DB) {
-	ctx := context.Background()
-
+func processScans(ctx context.Context, db *sql.DB, settings Settings) {
 	rows, err := db.QueryContext(ctx, `SELECT id, "serverId", "totalPorts" FROM "Scan" WHERE status IN ('queued', 'scanning') ORDER BY "createdAt" ASC`)
 	if err != nil {
 		fmt.Printf("Error fetching scans: %v\n", err)
 		return
-	}
-
-	type scanJob struct {
-		scanID     int
-		serverID   int
-		totalPorts int
 	}
 
 	var jobs []scanJob
@@ -110,55 +125,76 @@ func processScans(db *sql.DB) {
 	}
 	_ = rows.Close()
 
+	concurrency := settings.ScanConcurrency
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
 	for _, job := range jobs {
-		var server Server
-		err := db.QueryRowContext(ctx,
-			`SELECT id, ip FROM "Server" WHERE id = ?`, job.serverID).Scan(&server.ID, &server.IP)
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(job scanJob) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			processScanJob(ctx, db, job)
+		}(job)
+	}
+
+	wg.Wait()
+}
+
+func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
+	var server Server
+	err := db.QueryRowContext(ctx,
+		`SELECT id, ip FROM "Server" WHERE id = ?`, job.serverID).Scan(&server.ID, &server.IP)
+	if err != nil {
+		fmt.Printf("Error fetching server %d: %v\n", job.serverID, err)
+		return
+	}
+
+	totalPorts := job.totalPorts
+	if totalPorts <= 0 {
+		totalPorts = maxPort
+	}
+
+	if err := markScanStarted(ctx, db, job.scanID); err != nil {
+		fmt.Printf("Error marking scan %d as started: %v\n", job.scanID, err)
+		return
+	}
+
+	openPorts, canceled := scanPorts(server.IP, totalPorts, func(scanned, open int) bool {
+		if err := updateScanProgress(ctx, db, job.scanID, scanned, open); err != nil {
+			fmt.Printf("Error updating scan progress %d: %v\n", job.scanID, err)
+		}
+		isCanceled, err := isScanCanceled(ctx, db, job.scanID)
 		if err != nil {
-			fmt.Printf("Error fetching server %d: %v\n", job.serverID, err)
-			continue
+			fmt.Printf("Error checking scan cancel status %d: %v\n", job.scanID, err)
+			return false
 		}
+		return isCanceled
+	})
 
-		totalPorts := job.totalPorts
-		if totalPorts <= 0 {
-			totalPorts = maxPort
+	if canceled {
+		if err := markScanCanceled(ctx, db, job.scanID); err != nil {
+			fmt.Printf("Error marking scan %d as canceled: %v\n", job.scanID, err)
 		}
+		return
+	}
 
-		if err := markScanStarted(ctx, db, job.scanID); err != nil {
-			fmt.Printf("Error marking scan %d as started: %v\n", job.scanID, err)
-			continue
+	if err := savePorts(db, server.ID, openPorts); err != nil {
+		fmt.Printf("Error saving ports: %v\n", err)
+		if markErr := markScanError(ctx, db, job.scanID, err.Error()); markErr != nil {
+			fmt.Printf("Error marking scan %d as failed: %v\n", job.scanID, markErr)
 		}
+		return
+	}
 
-		openPorts, canceled := scanPorts(server.IP, totalPorts, func(scanned, open int) bool {
-			if err := updateScanProgress(ctx, db, job.scanID, scanned, open); err != nil {
-				fmt.Printf("Error updating scan progress %d: %v\n", job.scanID, err)
-			}
-			isCanceled, err := isScanCanceled(ctx, db, job.scanID)
-			if err != nil {
-				fmt.Printf("Error checking scan cancel status %d: %v\n", job.scanID, err)
-				return false
-			}
-			return isCanceled
-		})
-
-		if canceled {
-			if err := markScanCanceled(ctx, db, job.scanID); err != nil {
-				fmt.Printf("Error marking scan %d as canceled: %v\n", job.scanID, err)
-			}
-			continue
-		}
-
-		if err := savePorts(db, server.ID, openPorts); err != nil {
-			fmt.Printf("Error saving ports: %v\n", err)
-			if markErr := markScanError(ctx, db, job.scanID, err.Error()); markErr != nil {
-				fmt.Printf("Error marking scan %d as failed: %v\n", job.scanID, markErr)
-			}
-			continue
-		}
-
-		if err := markScanDone(ctx, db, job.scanID, totalPorts, len(openPorts)); err != nil {
-			fmt.Printf("Error marking scan %d as done: %v\n", job.scanID, err)
-		}
+	if err := markScanDone(ctx, db, job.scanID, totalPorts, len(openPorts)); err != nil {
+		fmt.Printf("Error marking scan %d as done: %v\n", job.scanID, err)
 	}
 }
 
@@ -337,6 +373,125 @@ func isScanCanceled(ctx context.Context, db *sql.DB, scanID int) (bool, error) {
 		return false, err
 	}
 	return status == "canceled", nil
+}
+
+func getSettings(ctx context.Context, db *sql.DB) (Settings, error) {
+	var scanEnabledInt int
+	var intervalMinutes int
+	var concurrency int
+
+	err := db.QueryRowContext(ctx, `SELECT "scanEnabled", "scanIntervalMinutes", "scanConcurrency" FROM "Settings" ORDER BY id ASC LIMIT 1`).Scan(&scanEnabledInt, &intervalMinutes, &concurrency)
+	if err == sql.ErrNoRows {
+		_, insertErr := db.ExecContext(ctx, `INSERT INTO "Settings" ("scanEnabled", "scanIntervalMinutes", "scanConcurrency") VALUES (1, 1440, 2)`)
+		if insertErr != nil {
+			return Settings{}, insertErr
+		}
+		err = db.QueryRowContext(ctx, `SELECT "scanEnabled", "scanIntervalMinutes", "scanConcurrency" FROM "Settings" ORDER BY id ASC LIMIT 1`).Scan(&scanEnabledInt, &intervalMinutes, &concurrency)
+	}
+	if err != nil {
+		return Settings{}, err
+	}
+
+	if intervalMinutes < 1 {
+		intervalMinutes = 1
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	return Settings{
+		ScanEnabled:         scanEnabledInt != 0,
+		ScanIntervalMinutes: intervalMinutes,
+		ScanConcurrency:     concurrency,
+	}, nil
+}
+
+func enqueuePeriodicScans(ctx context.Context, db *sql.DB, settings Settings) error {
+	if !settings.ScanEnabled {
+		return nil
+	}
+
+	interval := time.Duration(settings.ScanIntervalMinutes) * time.Minute
+	if interval <= 0 {
+		return nil
+	}
+
+	query := `
+SELECT s.id, MAX(CAST(strftime('%s', sc."finishedAt") AS INTEGER)) AS lastScanEpoch
+FROM "Server" s
+LEFT JOIN "Scan" sc ON sc."serverId" = s.id AND sc.status = 'done'
+GROUP BY s.id`
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	now := time.Now()
+	type scheduleCandidate struct {
+		serverID      int
+		lastScanEpoch sql.NullInt64
+	}
+	var candidates []scheduleCandidate
+	for rows.Next() {
+		var serverID int
+		var lastScanEpoch sql.NullInt64
+		if err := rows.Scan(&serverID, &lastScanEpoch); err != nil {
+			return err
+		}
+
+		candidates = append(candidates, scheduleCandidate{
+			serverID:      serverID,
+			lastScanEpoch: lastScanEpoch,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_ = rows.Close()
+
+	for _, candidate := range candidates {
+		if candidate.lastScanEpoch.Valid {
+			lastScanTime := time.Unix(candidate.lastScanEpoch.Int64, 0)
+			if now.Sub(lastScanTime) < interval {
+				continue
+			}
+		}
+
+		active, err := hasActiveScan(ctx, db, candidate.serverID)
+		if err != nil {
+			return err
+		}
+		if active {
+			continue
+		}
+
+		if err := enqueueScan(ctx, db, candidate.serverID, maxPort); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func hasActiveScan(ctx context.Context, db *sql.DB, serverID int) (bool, error) {
+	var exists int
+	err := db.QueryRowContext(ctx, `SELECT 1 FROM "Scan" WHERE "serverId" = ? AND status IN ('queued', 'scanning') LIMIT 1`, serverID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func enqueueScan(ctx context.Context, db *sql.DB, serverID int, totalPorts int) error {
+	_, err := db.ExecContext(ctx, `INSERT INTO "Scan" ("serverId", status, "totalPorts", "scannedPorts", "openPorts") VALUES (?, 'queued', ?, 0, 0)`, serverID, totalPorts)
+	return err
 }
 
 func envInt(name string, fallback int) int {
