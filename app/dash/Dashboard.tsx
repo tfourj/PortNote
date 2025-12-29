@@ -385,6 +385,15 @@ export default function Dashboard() {
     (document.getElementById('add') as HTMLDialogElement)?.showModal();
   };
 
+  const handleAddVmForHost = (hostId: number) => {
+    setType(0);
+    setServerName("");
+    setServerIP("");
+    setIsVm(true);
+    setServerHost(hostId);
+    (document.getElementById('add') as HTMLDialogElement)?.showModal();
+  };
+
 const usedPorts = useMemo(() => {
   const ports = new Set<number>();
   servers.forEach(server => {
@@ -852,9 +861,9 @@ const generateRandomPort = () => {
                   </div>
                   <button
                     className="btn btn-xs btn-ghost"
-                    onClick={() => handleAddPortForServer(server.id)}
-                    aria-label={`Add port for server ${server.name}`}
-                    title={`Add port for ${server.name}`}
+                    onClick={() => handleAddVmForHost(server.id)}
+                    aria-label={`Add VM for host ${server.name}`}
+                    title={`Add VM for ${server.name}`}
                   >
                     <Plus size={14} />
                   </button>
