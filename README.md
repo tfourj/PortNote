@@ -25,11 +25,25 @@ Random Port Generator
 
 ## Deployment
 
-Simply run this compose.yml:
+Clone this repo and simply run this compose.yml:
 ```yml
 services:
+  migrate:
+    build:
+      context: .
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - portnote_data:/data
+
   web:
-    image: haedlessdev/portnote:latest
+    build:
+      context: .
+    command: ["npm", "start"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "3000:3000"
     environment:
@@ -42,7 +56,12 @@ services:
       - portnote_data:/data
 
   agent:
-    image: haedlessdev/portnote-agent:latest
+    build:
+      context: ./agent
+    user: "0:0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "file:/data/portnote.db"
     volumes:
@@ -50,6 +69,7 @@ services:
 
 volumes:
   portnote_data:
+
 ```
 
 ## Tech Stack & Credits
