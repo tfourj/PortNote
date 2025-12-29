@@ -678,8 +678,12 @@ const generateRandomPort = () => {
           <div className="modal-box">
             <div className="flex flex-col gap-4" id="modal-title">
               <div className="flex items-center gap-2">
-                <span className="loading loading-spinner text-primary loading-md"></span>
-                <p className="text-sm opacity-70">Scans running in the background.</p>
+                {activeScans.length > 0 && (
+                  <span className="loading loading-spinner text-primary loading-md"></span>
+                )}
+                <p className="text-sm opacity-70">
+                  {activeScans.length > 0 ? "Scans running in the background." : "Background port scans"}
+                </p>
               </div>
               <div className="space-y-3">
                 {activeScans.length === 0 ? (
