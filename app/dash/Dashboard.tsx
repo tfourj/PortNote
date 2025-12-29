@@ -377,6 +377,14 @@ export default function Dashboard() {
     setPortPort(null);
   };
 
+  const handleAddPortForServer = (serverId: number) => {
+    setType(1);
+    setPortServer(serverId);
+    setPortNote("");
+    setPortPort(null);
+    (document.getElementById('add') as HTMLDialogElement)?.showModal();
+  };
+
 const usedPorts = useMemo(() => {
   const ports = new Set<number>();
   servers.forEach(server => {
@@ -844,6 +852,14 @@ const generateRandomPort = () => {
                   </div>
                   <button
                     className="btn btn-xs btn-ghost"
+                    onClick={() => handleAddPortForServer(server.id)}
+                    aria-label={`Add port for server ${server.name}`}
+                    title={`Add port for ${server.name}`}
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <button
+                    className="btn btn-xs btn-ghost"
                     onClick={() => {
                       setEditItem(server);
                       (document.getElementById('edit') as HTMLDialogElement)?.showModal();
@@ -908,7 +924,7 @@ const generateRandomPort = () => {
                             }`} />
                           </button>
                       <div className="font-medium">🖥️ {vm.name}</div>
-                  <button
+                      <button
                     className="btn btn-xs btn-ghost text-primary"
                     onClick={() => handleScanButtonClick(vm.id)}
                     aria-label={`Scan ports for VM ${vm.name}`}
@@ -919,7 +935,15 @@ const generateRandomPort = () => {
                       <ScanSearch size={14} />
                     )}
                   </button>
-                      <div className="ml-auto flex gap-2">
+                  <div className="ml-auto flex gap-2">
+                        <button
+                          className="btn btn-xs btn-ghost"
+                          onClick={() => handleAddPortForServer(vm.id)}
+                          aria-label={`Add port for VM ${vm.name}`}
+                          title={`Add port for ${vm.name}`}
+                        >
+                          <Plus size={14} />
+                        </button>
                         <button
                           className="btn btn-xs btn-ghost"
                           onClick={() => {
