@@ -104,6 +104,12 @@ export default function Dashboard() {
   const [isCleanPortsOpen, setIsCleanPortsOpen] = useState(false);
   const [portsToClean, setPortsToClean] = useState<CleanupPort[]>([]);
   const [isCleanPortsLoading, setIsCleanPortsLoading] = useState(false);
+  const [dismissedDownPortsKey, setDismissedDownPortsKey] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return Cookies.get("dismissedDownPortsKey") ?? null;
+    }
+    return null;
+  });
 
 
   useEffect(() => {
@@ -117,6 +123,18 @@ export default function Dashboard() {
   useEffect(() => {
     Cookies.set('serverSort', sortType, { expires: 365, sameSite: 'Lax', secure: process.env.NODE_ENV === 'production' });
   }, [sortType]);
+
+  useEffect(() => {
+    if (!dismissedDownPortsKey) {
+      Cookies.remove("dismissedDownPortsKey");
+      return;
+    }
+    Cookies.set("dismissedDownPortsKey", dismissedDownPortsKey, {
+      expires: 365,
+      sameSite: "Lax",
+      secure: process.env.NODE_ENV === "production"
+    });
+  }, [dismissedDownPortsKey]);
 
   const toggleExpanded = (id: number) => {
     setExpanded(prev => {
@@ -611,6 +629,41 @@ const generateRandomPort = () => {
     ? Math.min(100, Math.round((selectedScan.scannedPorts / selectedScan.totalPorts) * 100))
     : 0;
 
+  const downPortsInfo = useMemo(() => {
+    const serverIds = new Set<number>();
+    const downPortIds: number[] = [];
+    let total = 0;
+    servers.forEach((server) => {
+      server.ports.forEach((port) => {
+        if (isPortDown(port)) {
+          total += 1;
+          serverIds.add(server.id);
+          downPortIds.push(port.id);
+        }
+      });
+    });
+    downPortIds.sort((a, b) => a - b);
+    return { total, serverIds, key: downPortIds.join(",") };
+  }, [servers]);
+
+  useEffect(() => {
+    if (downPortsInfo.total === 0) {
+      setDismissedDownPortsKey(null);
+      return;
+    }
+    if (dismissedDownPortsKey && dismissedDownPortsKey !== downPortsInfo.key) {
+      setDismissedDownPortsKey(null);
+    }
+  }, [downPortsInfo, dismissedDownPortsKey]);
+
+  const handleExpandDownPorts = () => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      downPortsInfo.serverIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
   const nextScanAt = useMemo(() => {
     if (!scanEnabledSetting || !lastScanAt) {
       return null;
@@ -879,6 +932,31 @@ const generateRandomPort = () => {
       )}
       <div className="grid grid-cols-12 pt-12">
         <div className="col-start-3 col-end-11" role="main" aria-label="Server and port management">
+          {downPortsInfo.total > 0 && dismissedDownPortsKey !== downPortsInfo.key && (
+            <div className="alert alert-warning mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                <span className="text-sm">
+                  {downPortsInfo.total} ports were not found in the latest scan.
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="btn btn-sm"
+                    onClick={handleExpandDownPorts}
+                    aria-label="Show devices with closed ports"
+                  >
+                    Show affected devices
+                  </button>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => setDismissedDownPortsKey(downPortsInfo.key)}
+                    aria-label="Dismiss closed ports warning"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="w-full flex gap-2">
             <select
                 value={sortType}
