@@ -3106,26 +3106,59 @@ export namespace Prisma {
   export type ScanAvgAggregateOutputType = {
     id: number | null
     serverId: number | null
+    totalPorts: number | null
+    scannedPorts: number | null
+    openPorts: number | null
   }
 
   export type ScanSumAggregateOutputType = {
     id: number | null
     serverId: number | null
+    totalPorts: number | null
+    scannedPorts: number | null
+    openPorts: number | null
   }
 
   export type ScanMinAggregateOutputType = {
     id: number | null
     serverId: number | null
+    status: string | null
+    totalPorts: number | null
+    scannedPorts: number | null
+    openPorts: number | null
+    error: string | null
+    startedAt: Date | null
+    finishedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
   }
 
   export type ScanMaxAggregateOutputType = {
     id: number | null
     serverId: number | null
+    status: string | null
+    totalPorts: number | null
+    scannedPorts: number | null
+    openPorts: number | null
+    error: string | null
+    startedAt: Date | null
+    finishedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
   }
 
   export type ScanCountAggregateOutputType = {
     id: number
     serverId: number
+    status: number
+    totalPorts: number
+    scannedPorts: number
+    openPorts: number
+    error: number
+    startedAt: number
+    finishedAt: number
+    createdAt: number
+    updatedAt: number
     _all: number
   }
 
@@ -3133,26 +3166,59 @@ export namespace Prisma {
   export type ScanAvgAggregateInputType = {
     id?: true
     serverId?: true
+    totalPorts?: true
+    scannedPorts?: true
+    openPorts?: true
   }
 
   export type ScanSumAggregateInputType = {
     id?: true
     serverId?: true
+    totalPorts?: true
+    scannedPorts?: true
+    openPorts?: true
   }
 
   export type ScanMinAggregateInputType = {
     id?: true
     serverId?: true
+    status?: true
+    totalPorts?: true
+    scannedPorts?: true
+    openPorts?: true
+    error?: true
+    startedAt?: true
+    finishedAt?: true
+    createdAt?: true
+    updatedAt?: true
   }
 
   export type ScanMaxAggregateInputType = {
     id?: true
     serverId?: true
+    status?: true
+    totalPorts?: true
+    scannedPorts?: true
+    openPorts?: true
+    error?: true
+    startedAt?: true
+    finishedAt?: true
+    createdAt?: true
+    updatedAt?: true
   }
 
   export type ScanCountAggregateInputType = {
     id?: true
     serverId?: true
+    status?: true
+    totalPorts?: true
+    scannedPorts?: true
+    openPorts?: true
+    error?: true
+    startedAt?: true
+    finishedAt?: true
+    createdAt?: true
+    updatedAt?: true
     _all?: true
   }
 
@@ -3245,6 +3311,15 @@ export namespace Prisma {
   export type ScanGroupByOutputType = {
     id: number
     serverId: number
+    status: string
+    totalPorts: number
+    scannedPorts: number
+    openPorts: number
+    error: string | null
+    startedAt: Date | null
+    finishedAt: Date | null
+    createdAt: Date
+    updatedAt: Date
     _count: ScanCountAggregateOutputType | null
     _avg: ScanAvgAggregateOutputType | null
     _sum: ScanSumAggregateOutputType | null
@@ -3269,24 +3344,60 @@ export namespace Prisma {
   export type ScanSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
     serverId?: boolean
+    status?: boolean
+    totalPorts?: boolean
+    scannedPorts?: boolean
+    openPorts?: boolean
+    error?: boolean
+    startedAt?: boolean
+    finishedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
   }, ExtArgs["result"]["scan"]>
 
   export type ScanSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
     serverId?: boolean
+    status?: boolean
+    totalPorts?: boolean
+    scannedPorts?: boolean
+    openPorts?: boolean
+    error?: boolean
+    startedAt?: boolean
+    finishedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
   }, ExtArgs["result"]["scan"]>
 
   export type ScanSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
     serverId?: boolean
+    status?: boolean
+    totalPorts?: boolean
+    scannedPorts?: boolean
+    openPorts?: boolean
+    error?: boolean
+    startedAt?: boolean
+    finishedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
   }, ExtArgs["result"]["scan"]>
 
   export type ScanSelectScalar = {
     id?: boolean
     serverId?: boolean
+    status?: boolean
+    totalPorts?: boolean
+    scannedPorts?: boolean
+    openPorts?: boolean
+    error?: boolean
+    startedAt?: boolean
+    finishedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
   }
 
-  export type ScanOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "serverId", ExtArgs["result"]["scan"]>
+  export type ScanOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "serverId" | "status" | "totalPorts" | "scannedPorts" | "openPorts" | "error" | "startedAt" | "finishedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["scan"]>
 
   export type $ScanPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "Scan"
@@ -3294,6 +3405,15 @@ export namespace Prisma {
     scalars: $Extensions.GetPayloadResult<{
       id: number
       serverId: number
+      status: string
+      totalPorts: number
+      scannedPorts: number
+      openPorts: number
+      error: string | null
+      startedAt: Date | null
+      finishedAt: Date | null
+      createdAt: Date
+      updatedAt: Date
     }, ExtArgs["result"]["scan"]>
     composites: {}
   }
@@ -3719,6 +3839,15 @@ export namespace Prisma {
   interface ScanFieldRefs {
     readonly id: FieldRef<"Scan", 'Int'>
     readonly serverId: FieldRef<"Scan", 'Int'>
+    readonly status: FieldRef<"Scan", 'String'>
+    readonly totalPorts: FieldRef<"Scan", 'Int'>
+    readonly scannedPorts: FieldRef<"Scan", 'Int'>
+    readonly openPorts: FieldRef<"Scan", 'Int'>
+    readonly error: FieldRef<"Scan", 'String'>
+    readonly startedAt: FieldRef<"Scan", 'DateTime'>
+    readonly finishedAt: FieldRef<"Scan", 'DateTime'>
+    readonly createdAt: FieldRef<"Scan", 'DateTime'>
+    readonly updatedAt: FieldRef<"Scan", 'DateTime'>
   }
     
 
@@ -4116,7 +4245,16 @@ export namespace Prisma {
 
   export const ScanScalarFieldEnum: {
     id: 'id',
-    serverId: 'serverId'
+    serverId: 'serverId',
+    status: 'status',
+    totalPorts: 'totalPorts',
+    scannedPorts: 'scannedPorts',
+    openPorts: 'openPorts',
+    error: 'error',
+    startedAt: 'startedAt',
+    finishedAt: 'finishedAt',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
   };
 
   export type ScanScalarFieldEnum = (typeof ScanScalarFieldEnum)[keyof typeof ScanScalarFieldEnum]
@@ -4154,6 +4292,13 @@ export namespace Prisma {
    * Reference to a field of type 'String'
    */
   export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String'>
+    
+
+
+  /**
+   * Reference to a field of type 'DateTime'
+   */
+  export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
     
 
 
@@ -4271,11 +4416,29 @@ export namespace Prisma {
     NOT?: ScanWhereInput | ScanWhereInput[]
     id?: IntFilter<"Scan"> | number
     serverId?: IntFilter<"Scan"> | number
+    status?: StringFilter<"Scan"> | string
+    totalPorts?: IntFilter<"Scan"> | number
+    scannedPorts?: IntFilter<"Scan"> | number
+    openPorts?: IntFilter<"Scan"> | number
+    error?: StringNullableFilter<"Scan"> | string | null
+    startedAt?: DateTimeNullableFilter<"Scan"> | Date | string | null
+    finishedAt?: DateTimeNullableFilter<"Scan"> | Date | string | null
+    createdAt?: DateTimeFilter<"Scan"> | Date | string
+    updatedAt?: DateTimeFilter<"Scan"> | Date | string
   }
 
   export type ScanOrderByWithRelationInput = {
     id?: SortOrder
     serverId?: SortOrder
+    status?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
+    error?: SortOrderInput | SortOrder
+    startedAt?: SortOrderInput | SortOrder
+    finishedAt?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type ScanWhereUniqueInput = Prisma.AtLeast<{
@@ -4284,11 +4447,29 @@ export namespace Prisma {
     OR?: ScanWhereInput[]
     NOT?: ScanWhereInput | ScanWhereInput[]
     serverId?: IntFilter<"Scan"> | number
+    status?: StringFilter<"Scan"> | string
+    totalPorts?: IntFilter<"Scan"> | number
+    scannedPorts?: IntFilter<"Scan"> | number
+    openPorts?: IntFilter<"Scan"> | number
+    error?: StringNullableFilter<"Scan"> | string | null
+    startedAt?: DateTimeNullableFilter<"Scan"> | Date | string | null
+    finishedAt?: DateTimeNullableFilter<"Scan"> | Date | string | null
+    createdAt?: DateTimeFilter<"Scan"> | Date | string
+    updatedAt?: DateTimeFilter<"Scan"> | Date | string
   }, "id">
 
   export type ScanOrderByWithAggregationInput = {
     id?: SortOrder
     serverId?: SortOrder
+    status?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
+    error?: SortOrderInput | SortOrder
+    startedAt?: SortOrderInput | SortOrder
+    finishedAt?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
     _count?: ScanCountOrderByAggregateInput
     _avg?: ScanAvgOrderByAggregateInput
     _max?: ScanMaxOrderByAggregateInput
@@ -4302,6 +4483,15 @@ export namespace Prisma {
     NOT?: ScanScalarWhereWithAggregatesInput | ScanScalarWhereWithAggregatesInput[]
     id?: IntWithAggregatesFilter<"Scan"> | number
     serverId?: IntWithAggregatesFilter<"Scan"> | number
+    status?: StringWithAggregatesFilter<"Scan"> | string
+    totalPorts?: IntWithAggregatesFilter<"Scan"> | number
+    scannedPorts?: IntWithAggregatesFilter<"Scan"> | number
+    openPorts?: IntWithAggregatesFilter<"Scan"> | number
+    error?: StringNullableWithAggregatesFilter<"Scan"> | string | null
+    startedAt?: DateTimeNullableWithAggregatesFilter<"Scan"> | Date | string | null
+    finishedAt?: DateTimeNullableWithAggregatesFilter<"Scan"> | Date | string | null
+    createdAt?: DateTimeWithAggregatesFilter<"Scan"> | Date | string
+    updatedAt?: DateTimeWithAggregatesFilter<"Scan"> | Date | string
   }
 
   export type ServerCreateInput = {
@@ -4398,34 +4588,97 @@ export namespace Prisma {
 
   export type ScanCreateInput = {
     serverId: number
+    status?: string
+    totalPorts?: number
+    scannedPorts?: number
+    openPorts?: number
+    error?: string | null
+    startedAt?: Date | string | null
+    finishedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type ScanUncheckedCreateInput = {
     id?: number
     serverId: number
+    status?: string
+    totalPorts?: number
+    scannedPorts?: number
+    openPorts?: number
+    error?: string | null
+    startedAt?: Date | string | null
+    finishedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type ScanUpdateInput = {
     serverId?: IntFieldUpdateOperationsInput | number
+    status?: StringFieldUpdateOperationsInput | string
+    totalPorts?: IntFieldUpdateOperationsInput | number
+    scannedPorts?: IntFieldUpdateOperationsInput | number
+    openPorts?: IntFieldUpdateOperationsInput | number
+    error?: NullableStringFieldUpdateOperationsInput | string | null
+    startedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    finishedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type ScanUncheckedUpdateInput = {
     id?: IntFieldUpdateOperationsInput | number
     serverId?: IntFieldUpdateOperationsInput | number
+    status?: StringFieldUpdateOperationsInput | string
+    totalPorts?: IntFieldUpdateOperationsInput | number
+    scannedPorts?: IntFieldUpdateOperationsInput | number
+    openPorts?: IntFieldUpdateOperationsInput | number
+    error?: NullableStringFieldUpdateOperationsInput | string | null
+    startedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    finishedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type ScanCreateManyInput = {
     id?: number
     serverId: number
+    status?: string
+    totalPorts?: number
+    scannedPorts?: number
+    openPorts?: number
+    error?: string | null
+    startedAt?: Date | string | null
+    finishedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type ScanUpdateManyMutationInput = {
     serverId?: IntFieldUpdateOperationsInput | number
+    status?: StringFieldUpdateOperationsInput | string
+    totalPorts?: IntFieldUpdateOperationsInput | number
+    scannedPorts?: IntFieldUpdateOperationsInput | number
+    openPorts?: IntFieldUpdateOperationsInput | number
+    error?: NullableStringFieldUpdateOperationsInput | string | null
+    startedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    finishedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type ScanUncheckedUpdateManyInput = {
     id?: IntFieldUpdateOperationsInput | number
     serverId?: IntFieldUpdateOperationsInput | number
+    status?: StringFieldUpdateOperationsInput | string
+    totalPorts?: IntFieldUpdateOperationsInput | number
+    scannedPorts?: IntFieldUpdateOperationsInput | number
+    openPorts?: IntFieldUpdateOperationsInput | number
+    error?: NullableStringFieldUpdateOperationsInput | string | null
+    startedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    finishedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type IntFilter<$PrismaModel = never> = {
@@ -4613,29 +4866,112 @@ export namespace Prisma {
     _max?: NestedStringNullableFilter<$PrismaModel>
   }
 
+  export type DateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | null
+    notIn?: Date[] | string[] | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+  }
+
+  export type DateTimeFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    in?: Date[] | string[]
+    notIn?: Date[] | string[]
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeFilter<$PrismaModel> | Date | string
+  }
+
   export type ScanCountOrderByAggregateInput = {
     id?: SortOrder
     serverId?: SortOrder
+    status?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
+    error?: SortOrder
+    startedAt?: SortOrder
+    finishedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type ScanAvgOrderByAggregateInput = {
     id?: SortOrder
     serverId?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
   }
 
   export type ScanMaxOrderByAggregateInput = {
     id?: SortOrder
     serverId?: SortOrder
+    status?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
+    error?: SortOrder
+    startedAt?: SortOrder
+    finishedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type ScanMinOrderByAggregateInput = {
     id?: SortOrder
     serverId?: SortOrder
+    status?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
+    error?: SortOrder
+    startedAt?: SortOrder
+    finishedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type ScanSumOrderByAggregateInput = {
     id?: SortOrder
     serverId?: SortOrder
+    totalPorts?: SortOrder
+    scannedPorts?: SortOrder
+    openPorts?: SortOrder
+  }
+
+  export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | null
+    notIn?: Date[] | string[] | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
+  }
+
+  export type DateTimeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    in?: Date[] | string[]
+    notIn?: Date[] | string[]
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeWithAggregatesFilter<$PrismaModel> | Date | string
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedDateTimeFilter<$PrismaModel>
+    _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
   export type StringFieldUpdateOperationsInput = {
@@ -4660,6 +4996,14 @@ export namespace Prisma {
 
   export type NullableStringFieldUpdateOperationsInput = {
     set?: string | null
+  }
+
+  export type NullableDateTimeFieldUpdateOperationsInput = {
+    set?: Date | string | null
+  }
+
+  export type DateTimeFieldUpdateOperationsInput = {
+    set?: Date | string
   }
 
   export type NestedIntFilter<$PrismaModel = never> = {
@@ -4798,6 +5142,56 @@ export namespace Prisma {
     _count?: NestedIntNullableFilter<$PrismaModel>
     _min?: NestedStringNullableFilter<$PrismaModel>
     _max?: NestedStringNullableFilter<$PrismaModel>
+  }
+
+  export type NestedDateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | null
+    notIn?: Date[] | string[] | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+  }
+
+  export type NestedDateTimeFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    in?: Date[] | string[]
+    notIn?: Date[] | string[]
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeFilter<$PrismaModel> | Date | string
+  }
+
+  export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | null
+    notIn?: Date[] | string[] | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
+  }
+
+  export type NestedDateTimeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    in?: Date[] | string[]
+    notIn?: Date[] | string[]
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeWithAggregatesFilter<$PrismaModel> | Date | string
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedDateTimeFilter<$PrismaModel>
+    _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
 

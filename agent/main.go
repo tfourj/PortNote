@@ -8,17 +8,19 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 const (
-	scanInterval = 10 * time.Second
-	scanTimeout  = 750 * time.Millisecond
-	workerCount  = 2000
-	maxPort      = 65535
-	dbMaxConns   = 1
+	scanInterval           = 10 * time.Second
+	scanTimeout            = 750 * time.Millisecond
+	progressUpdateInterval = 1 * time.Second
+	workerCount            = 2000
+	maxPort                = 65535
+	dbMaxConns             = 1
 )
 
 var (
@@ -74,51 +76,96 @@ func main() {
 func processScans(db *sql.DB) {
 	ctx := context.Background()
 
-	rows, err := db.QueryContext(ctx, `SELECT "serverId" FROM "Scan"`)
+	rows, err := db.QueryContext(ctx, `SELECT id, "serverId", "totalPorts" FROM "Scan" WHERE status IN ('queued', 'scanning') ORDER BY "createdAt" ASC`)
 	if err != nil {
 		fmt.Printf("Error fetching scans: %v\n", err)
 		return
 	}
-	defer rows.Close()
 
+	type scanJob struct {
+		scanID     int
+		serverID   int
+		totalPorts int
+	}
+
+	var jobs []scanJob
 	for rows.Next() {
-		var serverID int
-		if err := rows.Scan(&serverID); err != nil {
+		var job scanJob
+		if err := rows.Scan(&job.scanID, &job.serverID, &job.totalPorts); err != nil {
 			fmt.Printf("Error scanning row: %v\n", err)
 			continue
 		}
-
-		var server Server
-		err := db.QueryRowContext(ctx,
-			`SELECT id, ip FROM "Server" WHERE id = ?`, serverID).Scan(&server.ID, &server.IP)
-		if err != nil {
-			fmt.Printf("Error fetching server %d: %v\n", serverID, err)
-			continue
-		}
-
-		openPorts := scanPorts(server.IP)
-
-		if err := savePorts(db, server.ID, openPorts); err != nil {
-			fmt.Printf("Error saving ports: %v\n", err)
-			continue
-		}
-
-		_, err = db.ExecContext(ctx, `DELETE FROM "Scan" WHERE "serverId" = ?`, serverID)
-		if err != nil {
-			fmt.Printf("Error deleting scan entry: %v\n", err)
-		}
+		jobs = append(jobs, job)
 	}
 
 	if err := rows.Err(); err != nil {
 		fmt.Printf("Error iterating scans: %v\n", err)
 	}
+	_ = rows.Close()
+
+	for _, job := range jobs {
+		var server Server
+		err := db.QueryRowContext(ctx,
+			`SELECT id, ip FROM "Server" WHERE id = ?`, job.serverID).Scan(&server.ID, &server.IP)
+		if err != nil {
+			fmt.Printf("Error fetching server %d: %v\n", job.serverID, err)
+			continue
+		}
+
+		totalPorts := job.totalPorts
+		if totalPorts <= 0 {
+			totalPorts = maxPort
+		}
+
+		if err := markScanStarted(ctx, db, job.scanID); err != nil {
+			fmt.Printf("Error marking scan %d as started: %v\n", job.scanID, err)
+			continue
+		}
+
+		openPorts := scanPorts(server.IP, totalPorts, func(scanned, open int) {
+			if err := updateScanProgress(ctx, db, job.scanID, scanned, open); err != nil {
+				fmt.Printf("Error updating scan progress %d: %v\n", job.scanID, err)
+			}
+		})
+
+		if err := savePorts(db, server.ID, openPorts); err != nil {
+			fmt.Printf("Error saving ports: %v\n", err)
+			if markErr := markScanError(ctx, db, job.scanID, err.Error()); markErr != nil {
+				fmt.Printf("Error marking scan %d as failed: %v\n", job.scanID, markErr)
+			}
+			continue
+		}
+
+		if err := markScanDone(ctx, db, job.scanID, totalPorts, len(openPorts)); err != nil {
+			fmt.Printf("Error marking scan %d as done: %v\n", job.scanID, err)
+		}
+	}
 }
 
-func scanPorts(ip string) []int {
+func scanPorts(ip string, totalPorts int, onProgress func(scanned int, open int)) []int {
 	ports := make(chan int, 10000)
 	results := make(chan int)
 	var openPorts []int
 	var wg sync.WaitGroup
+	var scanned atomic.Int64
+	var openCount atomic.Int64
+	done := make(chan struct{})
+
+	if onProgress != nil {
+		go func() {
+			ticker := time.NewTicker(progressUpdateInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					onProgress(int(scanned.Load()), int(openCount.Load()))
+				case <-done:
+					onProgress(int(scanned.Load()), int(openCount.Load()))
+					return
+				}
+			}
+		}()
+	}
 
 	// Start workers
 	for i := 0; i < workerCount; i++ {
@@ -129,15 +176,17 @@ func scanPorts(ip string) []int {
 				conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), scanTimeout)
 				if err == nil {
 					conn.Close()
+					openCount.Add(1)
 					results <- port
 				}
+				scanned.Add(1)
 			}
 		}()
 	}
 
 	// Send ports to workers
 	go func() {
-		for port := 1; port <= maxPort; port++ {
+		for port := 1; port <= totalPorts; port++ {
 			ports <- port
 		}
 		close(ports)
@@ -153,6 +202,7 @@ func scanPorts(ip string) []int {
 	for port := range results {
 		openPorts = append(openPorts, port)
 	}
+	close(done)
 
 	sort.Ints(openPorts)
 	return openPorts
@@ -211,4 +261,24 @@ func savePorts(db *sql.DB, serverID int, ports []int) error {
 	}
 
 	return nil
+}
+
+func markScanStarted(ctx context.Context, db *sql.DB, scanID int) error {
+	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET status = 'scanning', "startedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, scanID)
+	return err
+}
+
+func updateScanProgress(ctx context.Context, db *sql.DB, scanID int, scanned int, open int) error {
+	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET "scannedPorts" = ?, "openPorts" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, scanned, open, scanID)
+	return err
+}
+
+func markScanDone(ctx context.Context, db *sql.DB, scanID int, totalPorts int, open int) error {
+	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET status = 'done', "scannedPorts" = ?, "openPorts" = ?, "finishedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, totalPorts, open, scanID)
+	return err
+}
+
+func markScanError(ctx context.Context, db *sql.DB, scanID int, message string) error {
+	_, err := db.ExecContext(ctx, `UPDATE "Scan" SET status = 'error', error = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ?`, message, scanID)
+	return err
 }

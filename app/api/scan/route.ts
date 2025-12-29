@@ -12,13 +12,33 @@ export async function POST(request: NextRequest) {
         const body: ScanRequest = await request.json();
         const { serverId } = body;
 
-    const scan = await prisma.scan.create({
-        data: {
-            serverId
-        }
-    });
+        const existingScan = await prisma.scan.findFirst({
+            where: {
+                serverId,
+                status: {
+                    in: ["queued", "scanning"]
+                }
+            },
+            orderBy: {
+                createdAt: "desc"
+            }
+        });
 
-    return NextResponse.json({message: "Success"})
+        if (existingScan) {
+            return NextResponse.json({ message: "Scan already in progress", scanId: existingScan.id });
+        }
+
+        const scan = await prisma.scan.create({
+            data: {
+                serverId,
+                status: "queued",
+                totalPorts: 65535,
+                scannedPorts: 0,
+                openPorts: 0
+            }
+        });
+
+        return NextResponse.json({ message: "Success", scanId: scan.id });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

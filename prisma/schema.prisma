@@ -30,6 +30,15 @@ model Port {
 }
 
 model Scan {
-  id        Int         @id @default(autoincrement())
-  serverId  Int
+  id           Int      @id @default(autoincrement())
+  serverId     Int
+  status       String   @default("queued")
+  totalPorts   Int      @default(65535)
+  scannedPorts Int      @default(0)
+  openPorts    Int      @default(0)
+  error        String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

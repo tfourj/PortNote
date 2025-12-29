@@ -133,7 +133,16 @@ exports.Prisma.PortScalarFieldEnum = {
 
 exports.Prisma.ScanScalarFieldEnum = {
   id: 'id',
-  serverId: 'serverId'
+  serverId: 'serverId',
+  status: 'status',
+  totalPorts: 'totalPorts',
+  scannedPorts: 'scannedPorts',
+  openPorts: 'openPorts',
+  error: 'error',
+  startedAt: 'startedAt',
+  finishedAt: 'finishedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 };
 
 exports.Prisma.SortOrder = {

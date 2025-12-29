@@ -10,6 +10,18 @@ import Cookies from "js-cookie";
 import { SortType, Server, Port } from "@/app/types";
 import { compareIp } from "@/app/utils";
 
+type ScanStatus = "queued" | "scanning" | "done" | "error" | "missing";
+
+interface ScanProgress {
+  scanId: number;
+  serverId: number;
+  status: ScanStatus;
+  scannedPorts: number;
+  totalPorts: number;
+  openPorts: number;
+  error?: string | null;
+}
+
 export default function Dashboard() {
   const [servers, setServers] = useState<Server[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -44,8 +56,9 @@ export default function Dashboard() {
   const [randomPort, setRandomPort] = useState<number | null>(null);
   const [showRandomModal, setShowRandomModal] = useState(false);
 
-  const [isScanning, setIsScanning] = useState(false);
-  const [showRefreshMessage, setShowRefreshMessage] = useState(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [activeScanId, setActiveScanId] = useState<number | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
 
 
   useEffect(() => {
@@ -100,6 +113,46 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (activeScanId === null) {
+      return;
+    }
+
+    let closed = false;
+    const source = new EventSource(`/api/scan/stream?scanId=${activeScanId}`);
+
+    source.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as ScanProgress;
+      setScanProgress(payload);
+
+      if (payload.status === "done") {
+        fetchData().finally(() => {
+          setActiveScanId(null);
+        });
+      }
+
+      if (payload.status === "error" || payload.status === "missing") {
+        handleError(payload.error || "Scan failed");
+        setActiveScanId(null);
+      }
+    };
+
+    source.onerror = () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      source.close();
+      handleError("Lost scan progress connection");
+      setActiveScanId(null);
+    };
+
+    return () => {
+      closed = true;
+      source.close();
+    };
+  }, [activeScanId]);
 
   const handleError = (message: string) => {
     setError(message);
@@ -218,17 +271,23 @@ export default function Dashboard() {
 
   const handleScan = async (id: number) => {
     try {
-      setIsScanning(true);
-      setShowRefreshMessage(false);
+      setIsScanModalOpen(true);
+      setScanProgress({
+        scanId: 0,
+        serverId: id,
+        status: "queued",
+        scannedPorts: 0,
+        totalPorts: 65535,
+        openPorts: 0
+      });
       const payload = { serverId: id };
-      await axios.post("/api/scan", payload);
-      setTimeout(() => {
-        setShowRefreshMessage(true);
-      }, 30000);
+      const response = await axios.post<{ scanId: number }>("/api/scan", payload);
+      setActiveScanId(response.data.scanId);
     } catch (error: any) {
       handleError("Scan failed: " + error.message);
-      setIsScanning(false);
-      setShowRefreshMessage(false);
+      setIsScanModalOpen(false);
+      setActiveScanId(null);
+      setScanProgress(null);
     }
   };
 
@@ -278,6 +337,20 @@ const generateRandomPort = () => {
   const sortedPorts = (ports: Port[]) => 
     [...ports].sort((a, b) => a.port - b.port);
 
+  const scanPercent = scanProgress?.totalPorts
+    ? Math.min(100, Math.round((scanProgress.scannedPorts / scanProgress.totalPorts) * 100))
+    : 0;
+
+  const scanStatusLabel = scanProgress?.status === "done"
+    ? "Scan complete"
+    : scanProgress?.status === "error"
+    ? "Scan failed"
+    : scanProgress?.status === "missing"
+    ? "Scan not found"
+    : scanProgress?.status === "scanning"
+    ? "Scanning ports..."
+    : "Queued for scan...";
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -286,56 +359,38 @@ const generateRandomPort = () => {
         show={showError}
         onClose={() => setShowError(false)}
       />
-{isScanning && (
+{isScanModalOpen && (
         <dialog className="modal modal-open" aria-labelledby="modal-title">
           <div className="modal-box">
             <div className="flex flex-col items-center justify-center gap-4" id="modal-title">
-              {!showRefreshMessage ? (
-                <>
-                  <span className="loading loading-spinner text-primary loading-lg"></span>
-                  <p className="text-center">Scanning ports... This may take up to 30 seconds.</p>
-                </>
-              ) : (
-                <p className="text-center">Scan completed. Please refresh the page to view the new data.</p>
+              {(scanProgress?.status === "queued" || scanProgress?.status === "scanning") && (
+                <span className="loading loading-spinner text-primary loading-lg"></span>
+              )}
+              <p className="text-center">{scanStatusLabel}</p>
+              <div className="w-full space-y-2">
+                <progress className="progress progress-primary w-full" value={scanPercent} max="100"></progress>
+                <div className="flex justify-between text-xs opacity-70">
+                  <span>
+                    {(scanProgress?.scannedPorts ?? 0).toLocaleString()} / {(scanProgress?.totalPorts ?? 65535).toLocaleString()} ports scanned
+                  </span>
+                  <span>{scanPercent}%</span>
+                </div>
+                <div className="text-xs opacity-70">
+                  Open ports found: {(scanProgress?.openPorts ?? 0).toLocaleString()}
+                </div>
+              </div>
+              {scanProgress?.status === "error" && scanProgress.error && (
+                <p className="text-center text-error text-sm">{scanProgress.error}</p>
               )}
             </div>
             <div className="modal-action">
-              {showRefreshMessage ? (
-                <>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setIsScanning(false);
-                      setShowRefreshMessage(false);
-                      fetchData();
-                    }}
-                    aria-label="Refresh data after scan"
-                  >
-                    Refresh Data
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      setIsScanning(false);
-                      setShowRefreshMessage(false);
-                    }}
-                    aria-label="Close scan dialog"
-                  >
-                    Close
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setIsScanning(false);
-                    setShowRefreshMessage(false);
-                  }}
-                  aria-label="Close scan dialog"
-                >
-                  Close
-                </button>
-              )}
+              <button
+                className="btn"
+                onClick={() => setIsScanModalOpen(false)}
+                aria-label="Close scan dialog"
+              >
+                Close
+              </button>
             </div>
           </div>
         </dialog>
