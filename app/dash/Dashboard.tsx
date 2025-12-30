@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importSummary, setImportSummary] = useState("");
+  const [agentStatus, setAgentStatus] = useState<"healthy" | "unhealthy" | "unknown">("unknown");
 
   const [sortType, setSortType] = useState<SortType>(() => {
     if (typeof window !== 'undefined') {
@@ -223,6 +224,31 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAgentHealth = async () => {
+      try {
+        const response = await axios.get<{ healthy: boolean }>("/api/agent/health");
+        if (!cancelled) {
+          setAgentStatus(response.data?.healthy ? "healthy" : "unhealthy");
+        }
+      } catch {
+        if (!cancelled) {
+          setAgentStatus("unhealthy");
+        }
+      }
+    };
+
+    loadAgentHealth();
+    const timer = setInterval(loadAgentHealth, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -768,7 +794,7 @@ const generateRandomPort = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar onOpenConfig={handleOpenConfig} />
+      <Navbar onOpenConfig={handleOpenConfig} agentStatus={agentStatus} />
       <ErrorToast
         message={error}
         show={showError}

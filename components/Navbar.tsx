@@ -3,12 +3,27 @@ import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
 
+type AgentStatus = "healthy" | "unhealthy" | "unknown";
+
 type NavbarProps = {
     onOpenConfig?: () => void;
+    agentStatus?: AgentStatus;
 };
 
-export default function Navbar({ onOpenConfig }: NavbarProps){
+export default function Navbar({ onOpenConfig, agentStatus = "unknown" }: NavbarProps){
     const router = useRouter()
+    const statusLabel =
+        agentStatus === "healthy"
+            ? "Agent online"
+            : agentStatus === "unhealthy"
+            ? "Agent offline"
+            : "Agent checking";
+    const statusClass =
+        agentStatus === "healthy"
+            ? "badge-success"
+            : agentStatus === "unhealthy"
+            ? "badge-error"
+            : "badge-ghost";
 
     const logout = async () => {
         Cookies.remove("token")
@@ -23,6 +38,9 @@ export default function Navbar({ onOpenConfig }: NavbarProps){
             <div className="navbar-center hidden lg:flex">
             </div>
             <div className="navbar-end gap-2">
+                <span className={`badge ${statusClass}`} aria-label={statusLabel} aria-live="polite">
+                    {statusLabel}
+                </span>
                 <button
                     className="btn btn-soft"
                     onClick={() => onOpenConfig?.()}

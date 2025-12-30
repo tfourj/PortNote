@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +29,7 @@ const (
 	defaultWorkerCount     = 500
 	maxPort                = 65535
 	dbMaxConns             = 1
+	heartbeatInterval      = 10 * time.Second
 )
 
 var (
@@ -80,6 +83,11 @@ func main() {
 		scanRetries,
 	)
 	fmt.Printf("Database: %s\n", connString)
+	heartbeatPath := os.Getenv("AGENT_HEARTBEAT_PATH")
+	if heartbeatPath == "" {
+		heartbeatPath = defaultHeartbeatPath(connString)
+	}
+	fmt.Printf("Heartbeat path: %s\n", heartbeatPath)
 
 	db, err := sql.Open("sqlite", connString)
 	if err != nil {
@@ -110,11 +118,14 @@ func main() {
 	missingTables, err := checkSchemaTables(db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to inspect schema tables: %v\n", err)
-	} else if len(missingTables) > 0 {
-		fmt.Printf("Warning: missing tables: %s\n", strings.Join(missingTables, ", "))
-	} else {
-		fmt.Println("Database schema verified")
+		os.Exit(1)
 	}
+	if len(missingTables) > 0 {
+		fmt.Fprintf(os.Stderr, "Missing tables: %s\n", strings.Join(missingTables, ", "))
+		os.Exit(1)
+	}
+	fmt.Println("Database schema verified")
+	startHeartbeat(heartbeatPath)
 
 	ticker := time.NewTicker(scanInterval)
 	defer ticker.Stop()
@@ -639,6 +650,57 @@ func checkSchemaTables(db *sql.DB) ([]string, error) {
 	}
 
 	return missing, nil
+}
+
+type heartbeatPayload struct {
+	Timestamp string `json:"timestamp"`
+	Unix      int64  `json:"unix"`
+}
+
+func defaultHeartbeatPath(connString string) string {
+	if strings.HasPrefix(connString, "file:") {
+		path := strings.TrimPrefix(connString, "file:")
+		if path != "" {
+			return filepath.Join(filepath.Dir(path), "agent_heartbeat.json")
+		}
+	}
+	return "/data/agent_heartbeat.json"
+}
+
+func startHeartbeat(path string) {
+	if path == "" {
+		return
+	}
+	if err := writeHeartbeat(path); err != nil {
+		fmt.Printf("Heartbeat write failed: %v\n", err)
+	}
+	ticker := time.NewTicker(heartbeatInterval)
+	go func() {
+		for range ticker.C {
+			if err := writeHeartbeat(path); err != nil {
+				fmt.Printf("Heartbeat write failed: %v\n", err)
+			}
+		}
+	}()
+}
+
+func writeHeartbeat(path string) error {
+	now := time.Now().UTC()
+	payload := heartbeatPayload{
+		Timestamp: now.Format(time.RFC3339),
+		Unix:      now.Unix(),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func envInt(name string, fallback int) int {
