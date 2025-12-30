@@ -59,6 +59,11 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showError, setShowError] = useState(false);
   const [error, setError] = useState("");
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importSummary, setImportSummary] = useState("");
 
   const [sortType, setSortType] = useState<SortType>(() => {
     if (typeof window !== 'undefined') {
@@ -102,6 +107,7 @@ export default function Dashboard() {
   const [scannedServersCount, setScannedServersCount] = useState(0);
   const [activeScansCount, setActiveScansCount] = useState(0);
   const activeScanIdsRef = useRef<Set<number>>(new Set());
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [isCleanPortsOpen, setIsCleanPortsOpen] = useState(false);
   const [portsToClean, setPortsToClean] = useState<CleanupPort[]>([]);
   const [isCleanPortsLoading, setIsCleanPortsLoading] = useState(false);
@@ -286,6 +292,73 @@ export default function Dashboard() {
   const handleError = (message: string) => {
     setError(message);
     setShowError(true);
+  };
+
+  const clearImportFile = () => {
+    setImportFile(null);
+    if (importInputRef.current) {
+      importInputRef.current.value = "";
+    }
+  };
+
+  const handleOpenConfig = () => {
+    clearImportFile();
+    setImportSummary("");
+    setIsConfigOpen(true);
+  };
+
+  const handleCloseConfig = () => {
+    setIsConfigOpen(false);
+    clearImportFile();
+    setImportSummary("");
+  };
+
+  const handleExportPorts = async () => {
+    setIsExporting(true);
+    try {
+      const response = await axios.get("/api/ports/export");
+      const exportPayload = response.data;
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+        type: "application/json"
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.href = url;
+      link.download = `portnote-ports-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      handleError(error.response?.data?.error || "Export failed. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportPorts = async () => {
+    if (!importFile) {
+      handleError("Choose a JSON export file to import.");
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const fileText = await importFile.text();
+      const payload = JSON.parse(fileText);
+      const response = await axios.post("/api/ports/import", payload);
+      const { serversCreated, portsCreated, portsSkipped } = response.data || {};
+      setImportSummary(
+        `Imported ${serversCreated ?? 0} servers and ${portsCreated ?? 0} ports` +
+          (portsSkipped ? `. Skipped ${portsSkipped} invalid ports.` : ".")
+      );
+      clearImportFile();
+    } catch (error: any) {
+      handleError(error.response?.data?.error || error.message || "Import failed. Please try again.");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -695,12 +768,62 @@ const generateRandomPort = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      <Navbar onOpenConfig={handleOpenConfig} />
       <ErrorToast
         message={error}
         show={showError}
         onClose={() => setShowError(false)}
       />
+{isConfigOpen && (
+        <dialog className="modal modal-open" aria-labelledby="config-title">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg pb-2" id="config-title">Configuration</h3>
+            <div className="space-y-4">
+              <p className="text-sm opacity-70">Import or export your ports data.</p>
+              <div className="text-xs text-warning">
+                Warning: import/export is experimental.
+              </div>
+              <div className="space-y-2">
+                <button
+                  className="btn btn-outline w-full"
+                  onClick={handleExportPorts}
+                  aria-label="Export ports"
+                  disabled={isExporting}
+                >
+                  {isExporting ? <span className="loading loading-spinner loading-xs"></span> : "Export ports"}
+                </button>
+              </div>
+              <div className="space-y-2">
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  className="file-input file-input-bordered w-full"
+                  accept="application/json"
+                  onChange={(event) => {
+                    setImportFile(event.target.files?.[0] ?? null);
+                    setImportSummary("");
+                  }}
+                  aria-label="Import ports file"
+                />
+                <button
+                  className="btn btn-primary w-full"
+                  onClick={handleImportPorts}
+                  aria-label="Import ports"
+                  disabled={isImporting}
+                >
+                  {isImporting ? <span className="loading loading-spinner loading-xs"></span> : "Import ports"}
+                </button>
+                {importSummary && (
+                  <div className="text-xs opacity-70">{importSummary}</div>
+                )}
+              </div>
+            </div>
+            <div className="modal-action">
+              <button className="btn" onClick={handleCloseConfig} aria-label="Close configuration">Close</button>
+            </div>
+          </div>
+        </dialog>
+      )}
 {isScanDetailOpen && (
         <dialog className="modal modal-open" aria-labelledby="scan-detail-title">
           <div className="modal-box">

@@ -14,10 +14,14 @@ export default function Home() {
 
   const router = useRouter();
 
+  const handleError = (message: string) => {
+    setError(message);
+    setShowError(true);
+  };
+
   const login = async () => {
     if (!username || !password) {
-      setError("Please enter both email and password")
-      setShowError(true)
+      handleError("Please enter both email and password")
       return
     }
 
@@ -29,8 +33,7 @@ export default function Home() {
 
       router.push("/dash")
     } catch (error: any) {
-      setError(error.response?.data?.error || "Login failed. Please try again.")
-      setShowError(true)
+      handleError(error.response?.data?.error || "Login failed. Please try again.")
     }
   }
 
