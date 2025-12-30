@@ -1,0 +1,36 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: portnote-local
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - ./portnote_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    image: portnote-agent-local
+    user: "0:0"
+    depends_on:
+      web:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - ./portnote_data:/data
