@@ -1,0 +1,35 @@
+services:
+  web:
+    image: ghcr.io/tfourj/portnote:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - ./portnote_data:/data
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  agent:
+    image: ghcr.io/tfourj/portnote-agent:latest
+    user: "0:0"
+    depends_on:
+      web:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "file:/data/portnote.db"
+    volumes:
+      - ./portnote_data:/data
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.depends-on=web"

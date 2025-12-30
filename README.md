@@ -66,6 +66,7 @@ services:
     volumes:
       - ./portnote_data:/data
 ```
+If you use watchtower for automatic updates please see example for [compose](compose-watchtower.yml)
 
 ## Tech Stack & Credits
 
