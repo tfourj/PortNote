@@ -69,6 +69,18 @@ func main() {
 	workerCount = envInt("SCAN_WORKERS", defaultWorkerCount)
 	appStartedAt = time.Now()
 
+	fmt.Printf("Agent starting at %s\n", appStartedAt.Format(time.RFC3339))
+	fmt.Printf(
+		"Scan config: interval=%s workers=%d timeout=%s retryTimeout=%s retryDelay=%s retries=%d\n",
+		scanInterval,
+		workerCount,
+		scanTimeout,
+		scanRetryTimeout,
+		scanRetryDelay,
+		scanRetries,
+	)
+	fmt.Printf("Database: %s\n", connString)
+
 	db, err := sql.Open("sqlite", connString)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to open database: %v\n", err)
@@ -83,6 +95,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("Database connection ok")
 
 	if _, err := db.Exec(`PRAGMA journal_mode = WAL;`); err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to enable WAL mode: %v\n", err)
@@ -91,6 +104,16 @@ func main() {
 	if _, err := db.Exec(`PRAGMA busy_timeout = 5000;`); err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to set busy timeout: %v\n", err)
 		os.Exit(1)
+	}
+	fmt.Println("SQLite WAL enabled with busy_timeout=5000ms")
+
+	missingTables, err := checkSchemaTables(db)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to inspect schema tables: %v\n", err)
+	} else if len(missingTables) > 0 {
+		fmt.Printf("Warning: missing tables: %s\n", strings.Join(missingTables, ", "))
+	} else {
+		fmt.Println("Database schema verified")
 	}
 
 	ticker := time.NewTicker(scanInterval)
@@ -584,6 +607,38 @@ func hasActiveScan(ctx context.Context, db *sql.DB, serverID int) (bool, error) 
 func enqueueScan(ctx context.Context, db *sql.DB, serverID int, totalPorts int) error {
 	_, err := db.ExecContext(ctx, `INSERT INTO "Scan" ("serverId", status, "totalPorts", "scannedPorts", "openPorts") VALUES (?, 'queued', ?, 0, 0)`, serverID, totalPorts)
 	return err
+}
+
+func checkSchemaTables(db *sql.DB) ([]string, error) {
+	ctx := context.Background()
+	required := []string{"Server", "Port", "Scan", "Settings"}
+	found := make(map[string]bool, len(required))
+
+	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('Server', 'Port', 'Scan', 'Settings')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		found[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var missing []string
+	for _, name := range required {
+		if !found[name] {
+			missing = append(missing, name)
+		}
+	}
+
+	return missing, nil
 }
 
 func envInt(name string, fallback int) int {

@@ -33,51 +33,38 @@ Random Port Generator
 
 ## Deployment
 
-Clone this repo and simply run this compose.yml:
+create compose.yml:
 ```yml
 services:
-  migrate:
-    build:
-      context: .
-    command: ["npx", "prisma", "migrate", "deploy"]
-    environment:
-      DATABASE_URL: "file:/data/portnote.db"
-    volumes:
-      - portnote_data:/data
-
   web:
-    build:
-      context: .
-    command: ["npm", "start"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
+    image: ghcr.io/tfourj/portnote:latest
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
-      JWT_SECRET: RANDOM_SECRET # Replace with a secure random string
-      USER_SECRET: RANDOM_SECRET # Replace with a secure random string
-      LOGIN_USERNAME: username # Replace with a username
-      LOGIN_PASSWORD: mypassword # Replace with a custom password
       DATABASE_URL: "file:/data/portnote.db"
     volumes:
-      - portnote_data:/data
+      - ./portnote_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
 
   agent:
-    build:
-      context: ./agent
+    image: ghcr.io/tfourj/portnote-agent:latest
     user: "0:0"
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      web:
+        condition: service_healthy
+    env_file:
+      - .env
     environment:
       DATABASE_URL: "file:/data/portnote.db"
     volumes:
-      - portnote_data:/data
-
-volumes:
-  portnote_data:
-
+      - ./portnote_data:/data
 ```
 
 ## Tech Stack & Credits
